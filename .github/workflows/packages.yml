@@ -107,6 +107,8 @@ jobs:
               }
           }
           KTS
+      - name: Collect Rust and JavaScript notices (required by the bundler)
+        run: python3 scripts/notices.py --target aarch64-linux-android
       - name: Build emulator test APK (debug, x86_64)
         run: npm run tauri -- android build --debug --apk --target x86_64 --ci
       - name: Collect Android runtime notices
