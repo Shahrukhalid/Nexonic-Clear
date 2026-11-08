@@ -18,7 +18,22 @@ Supported formats: JPEG, PNG and WebP (including animated PNG and WebP).
 
 ## Download
 
-Portable builds for Windows (x64), macOS (Apple Silicon and Intel) and Android (ARM64 and ARM32) are on the [Releases](https://github.com/Shahrukhalid/Nexonic-Clear/releases) page. Nothing to install on desktop: unzip and run.
+<p align="center">
+  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Windows-x64-Portable.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Windows-Download-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-AppleSilicon.zip"><img alt="Download for Mac with Apple Silicon" src="https://img.shields.io/badge/Mac_Apple_Silicon-Download-000000?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-Intel.zip"><img alt="Download for Intel Mac" src="https://img.shields.io/badge/Mac_Intel-Download-555555?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM64.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white"></a>
+</p>
+
+| Platform | Direct download |
+| --- | --- |
+| Windows 10/11 (x64), portable | [NexonicClear-Windows-x64-Portable.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Windows-x64-Portable.zip) |
+| Mac with Apple Silicon (M1 and later) | [NexonicClear-macOS-AppleSilicon.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-AppleSilicon.zip) |
+| Mac with Intel | [NexonicClear-macOS-Intel.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-Intel.zip) |
+| Android (most phones, ARM64) | [NexonicClear-Android-ARM64.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM64.apk) |
+| Android (older phones, ARM32) | [NexonicClear-Android-ARM32.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM32.apk) |
+
+Nothing to install on desktop: unzip and run. Verify downloads with [SHA256SUMS.txt](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/SHA256SUMS.txt). All versions are on the [Releases](https://github.com/Shahrukhalid/Nexonic-Clear/releases) page.
 
 ## Honest limits
 
