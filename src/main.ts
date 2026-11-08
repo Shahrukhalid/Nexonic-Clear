@@ -73,11 +73,16 @@ function sumKind(info: Inspection, kind: Kind): number {
 }
 
 // ---------- IPC ----------
+// Desktop returns an ArrayBuffer; the Android bridge may return a plain array.
+const toBytes = (v: ArrayBuffer | number[] | null | undefined) =>
+  v instanceof ArrayBuffer ? new Uint8Array(v) : new Uint8Array(v ?? []);
 const api = {
   inspect: (bytes: Uint8Array) => invoke<Inspection>("inspect", bytes),
-  clean: (bytes: Uint8Array, o: Options) =>
-    invoke<{ id: number; report: CleanReport }>("clean", bytes, { headers: { "x-options": JSON.stringify(o) } }),
-  output: async (id: number) => new Uint8Array(await invoke<ArrayBuffer>("output", { id })),
+  clean: async (bytes: Uint8Array, o: Options) => {
+    await invoke("set_options", { options: o });
+    return invoke<{ id: number; report: CleanReport }>("clean", bytes);
+  },
+  output: async (id: number) => toBytes(await invoke<ArrayBuffer | number[]>("output", { id })),
   discard: (ids: number[]) => invoke("discard", { ids }),
 };
 
@@ -355,11 +360,11 @@ function render() {
 
 // ---------- Self-test (native acceptance; inert unless CI places a sample) ----------
 async function selftest() {
-  const buf = await invoke<ArrayBuffer>("selftest_sample");
-  if (!buf || buf.byteLength === 0) return;
+  const sample = toBytes(await invoke<ArrayBuffer | number[]>("selftest_sample"));
+  if (sample.length === 0) return;
   const fail = (d: string) => invoke("selftest_done", { passed: false, detail: d });
   try {
-    const bytes = new Uint8Array(buf);
+    const bytes = sample;
     const before = await api.inspect(bytes);
     if (!before.credentials.present || before.credentials.state !== "valid") return fail(`credentials: ${JSON.stringify(before.credentials)}`);
     const all = { exif: true, xmp: true, iptc: true, icc: true, c2pa: true, comments: true, other: true, keep_orientation: false };

@@ -12,6 +12,15 @@ use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Manager, State};
 
 #[derive(Default)]
+struct Settings(Mutex<Option<CleanOptions>>);
+
+/// Options are sent by their own call: request headers are not delivered on every platform.
+#[tauri::command]
+fn set_options(options: CleanOptions, settings: State<'_, Settings>) {
+    *settings.0.lock().unwrap() = Some(options);
+}
+
+#[derive(Default)]
 struct Outputs {
     next: AtomicU64,
     files: Mutex<HashMap<u64, Vec<u8>>>,
@@ -23,11 +32,35 @@ struct Cleaned {
     report: CleanReport,
 }
 
+/// Desktop webviews deliver a Uint8Array as a raw body. The Android webview
+/// serialises it as JSON (an array, or an object keyed by index), so accept both.
 fn body(request: &Request<'_>) -> Result<Vec<u8>, String> {
+    let bad = || "Expected image bytes.".to_string();
     match request.body() {
         InvokeBody::Raw(data) => Ok(data.clone()),
-        _ => Err("Expected image bytes.".into()),
+        InvokeBody::Json(serde_json::Value::Array(items)) => items
+            .iter()
+            .map(|v| v.as_u64().filter(|b| *b <= 255).map(|b| b as u8))
+            .collect::<Option<Vec<u8>>>()
+            .ok_or_else(bad),
+        InvokeBody::Json(serde_json::Value::Object(map)) => {
+            let mut out = vec![0u8; map.len()];
+            for (k, v) in map {
+                let i: usize = k.parse().map_err(|_| bad())?;
+                let b = v.as_u64().filter(|b| *b <= 255).ok_or_else(bad)?;
+                *out.get_mut(i).ok_or_else(bad)? = b as u8;
+            }
+            Ok(out)
+        }
+        _ => Err(bad()),
     }
+    .and_then(|d| {
+        if d.len() > clear_core::MAX_FILE_SIZE {
+            Err("The file is larger than 256 MB.".into())
+        } else {
+            Ok(d)
+        }
+    })
 }
 
 #[tauri::command]
@@ -37,13 +70,12 @@ async fn inspect(request: Request<'_>) -> Result<Inspection, String> {
 }
 
 #[tauri::command]
-async fn clean(request: Request<'_>, outputs: State<'_, Outputs>) -> Result<Cleaned, String> {
-    let options: CleanOptions = match request.headers().get("x-options") {
-        Some(v) => {
-            serde_json::from_slice(v.as_bytes()).map_err(|_| "Invalid options.".to_string())?
-        }
-        None => CleanOptions::default(),
-    };
+async fn clean(
+    request: Request<'_>,
+    outputs: State<'_, Outputs>,
+    settings: State<'_, Settings>,
+) -> Result<Cleaned, String> {
+    let options = settings.0.lock().unwrap().clone().unwrap_or_default();
     let data = body(&request)?;
     let (out, report) = clear_core::clean_and_verify(&data, &options).map_err(|e| e.to_string())?;
     let id = outputs.next.fetch_add(1, Ordering::Relaxed);
@@ -106,8 +138,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Outputs::default())
+        .manage(Settings::default())
         .invoke_handler(tauri::generate_handler![
             inspect,
+            set_options,
             clean,
             output,
             discard,
