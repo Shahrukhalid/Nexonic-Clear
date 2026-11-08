@@ -15,7 +15,12 @@ if json.loads(proof.read_text()).get("passed") is not True:
     raise SystemExit("Android device self-test proof required")
 sdk = Path(os.environ["ANDROID_HOME"])
 tools = sorted((sdk / "build-tools").iterdir(), key=lambda p: tuple(int(x) for x in p.name.split(".") if x.isdigit()))[-1]
-keystore = Path.home() / ".android/debug.keystore"
+# Development signing key generated for this build (not a store or production key).
+keystore = ROOT / "test-results/development-signing.jks"
+if not keystore.exists():
+    subprocess.run(["keytool", "-genkeypair", "-noprompt", "-keystore", keystore, "-alias", "nexonicdev",
+                    "-keyalg", "RSA", "-keysize", "3072", "-validity", "3650", "-storepass", "android",
+                    "-keypass", "android", "-dname", "CN=Nexonic Clear Development, O=Nexonic Technologies"], check=True)
 version = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())["version"]
 out = ROOT / "release-assets"
 out.mkdir(exist_ok=True)
@@ -29,7 +34,7 @@ for abi, label, variant in [("arm64-v8a", "ARM64", "arm64"), ("armeabi-v7a", "AR
     aligned = out / name
     subprocess.run([tools / "zipalign", "-f", "-P", "16", "4", found[0], aligned], check=True)
     subprocess.run([tools / "apksigner", "sign", "--ks", keystore, "--ks-pass", "pass:android",
-                    "--ks-key-alias", "androiddebugkey", "--key-pass", "pass:android", aligned], check=True)
+                    "--ks-key-alias", "nexonicdev", "--key-pass", "pass:android", aligned], check=True)
     subprocess.run([tools / "apksigner", "verify", aligned], check=True)
     subprocess.run([tools / "zipalign", "-c", "-P", "16", "4", aligned], check=True)
     with zipfile.ZipFile(aligned) as archive:
