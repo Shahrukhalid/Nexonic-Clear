@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Nexonic Clear</title>
+    <link rel="icon" href="/icon.png" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <img src="/icon.png" alt="" width="32" height="32" />
+        <div>
+          <h1>Nexonic Clear</h1>
+          <p>Image metadata and Content Credentials, handled on this device.</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="add" class="btn ghost">Add images</button>
+        <button id="clear-list" class="btn ghost" hidden>Clear list</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="drop" class="drop">
+        <div class="drop-inner">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V11m0 0-8 8m8-8 8 8M10 30v5a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-5" /></svg>
+          <h2>Drop JPEG, PNG or WebP images</h2>
+          <p>Or <button id="pick" class="link">choose files</button>. Files are read locally and never uploaded.</p>
+        </div>
+      </section>
+
+      <section id="workspace" class="workspace" hidden>
+        <aside class="files">
+          <ul id="file-list"></ul>
+        </aside>
+        <section id="detail" class="detail"></section>
+        <aside class="options">
+          <h3>Remove</h3>
+          <div id="toggles"></div>
+          <p id="c2pa-warning" class="warn" hidden></p>
+          <button id="run" class="btn primary">Clean images</button>
+          <button id="save-all" class="btn" hidden>Save all</button>
+          <p id="status" class="status" role="status"></p>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
