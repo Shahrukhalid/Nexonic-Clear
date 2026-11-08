@@ -4,11 +4,11 @@ Nexonic Clear: inspect and remove image metadata and Content Credentials, fully 
 
 | Platform | File |
 | --- | --- |
-| Windows 10/11 (x64), portable | `NexonicClear-*-Windows-x64-Portable.zip` |
-| macOS Apple Silicon | `NexonicClear-*-macOS-AppleSilicon.zip` |
-| macOS Intel | `NexonicClear-*-macOS-Intel.zip` |
-| Android ARM64 (most phones) | `NexonicClear-*-Android-ARM64.apk` |
-| Android ARM32 (older phones) | `NexonicClear-*-Android-ARM32.apk` |
+| Windows 10/11 (x64), portable | `NexonicClear-Windows-x64-Portable.zip` |
+| macOS Apple Silicon | `NexonicClear-macOS-AppleSilicon.zip` |
+| macOS Intel | `NexonicClear-macOS-Intel.zip` |
+| Android ARM64 (most phones) | `NexonicClear-Android-ARM64.apk` |
+| Android ARM32 (older phones) | `NexonicClear-Android-ARM32.apk` |
 
 Verify downloads with `SHA256SUMS.txt`.
 

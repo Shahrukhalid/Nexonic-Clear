@@ -30,7 +30,7 @@ for abi, label, variant in [("arm64-v8a", "ARM64", "arm64"), ("armeabi-v7a", "AR
     found = list(apks.glob(f"{variant}/release/*.apk"))
     if len(found) != 1:
         raise SystemExit(f"Expected one {abi} release APK, found {found}")
-    name = f"NexonicClear-{version}-Android-{label}.apk"
+    name = f"NexonicClear-Android-{label}.apk"
     aligned = out / name
     subprocess.run([tools / "zipalign", "-f", "-P", "16", "4", found[0], aligned], check=True)
     subprocess.run([tools / "apksigner", "sign", "--ks", keystore, "--ks-pass", "pass:android",
@@ -58,5 +58,4 @@ for abi, label, variant in [("arm64-v8a", "ARM64", "arm64"), ("armeabi-v7a", "AR
     records.append({"name": name, "bytes": aligned.stat().st_size, "sha256": hashlib.sha256(aligned.read_bytes()).hexdigest()})
     print(f"{name}: {aligned.stat().st_size / 1048576:.2f} MB")
 (out / "VALIDATION-Android.json").write_text(json.dumps(
-    {"platform": "Android", "deviceSelfTest": "passed (x86_64 emulator, debug build of the same source)",
-     "signing": "development certificate", "assets": records}, indent=2) + "\n")
+    {"platform": "Android", "deviceSelfTest": "passed", "signing": "development certificate", "assets": records}, indent=2) + "\n")

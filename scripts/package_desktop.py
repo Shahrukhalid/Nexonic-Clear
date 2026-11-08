@@ -41,7 +41,7 @@ if platform.system() == "Windows":
         (folder / "README.txt").write_text(readme.format(version=version, label=label,
             run="Extract the folder, then open NexonicClear.exe.\nRequires the Microsoft Edge WebView2 Runtime, included with Windows 10 and 11.\nThis build is not code-signed, so SmartScreen may ask for confirmation."))
         selftest(folder / "NexonicClear.exe")
-        shutil.make_archive(str(out / f"NexonicClear-{version}-{label}-Portable"), "zip", tmp)
+        shutil.make_archive(str(out / f"NexonicClear-{label}-Portable"), "zip", tmp)
 else:
     label = "macOS-" + ("AppleSilicon" if platform.machine() == "arm64" else "Intel")
     app = build / "bundle/macos/Nexonic Clear.app"
@@ -50,7 +50,7 @@ else:
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
     selftest(app / "Contents/MacOS/nexonic-clear")
     subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app),
-                    str(out / f"NexonicClear-{version}-{label}.zip")], check=True)
+                    str(out / f"NexonicClear-{label}.zip")], check=True)
 
 assets = [{"name": p.name, "bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
           for p in sorted(out.glob(f"*{label}*.zip"))]
