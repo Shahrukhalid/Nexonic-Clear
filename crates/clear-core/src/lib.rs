@@ -546,6 +546,15 @@ fn build(
 /// Remove the selected metadata and return the new file bytes.
 pub fn clean(data: &[u8], opts: &CleanOptions) -> Result<Vec<u8>> {
     let format = check(data)?;
+    let out = clean_inner(format, data, opts)?;
+    // Never hand back a file that would not be recognised and read again.
+    if check(&out).ok() != Some(format) || parse(format, &out).is_err() {
+        return Err(malformed("the cleaned file could not be read back"));
+    }
+    Ok(out)
+}
+
+fn clean_inner(format: Format, data: &[u8], opts: &CleanOptions) -> Result<Vec<u8>> {
     match format {
         Format::Jpeg | Format::Png | Format::Webp => {}
         Format::Pdf => {
