@@ -14,7 +14,7 @@
 - **Shows every field.** A searchable list of all readable metadata (EXIF, GPS, XMP, IPTC, PNG text, comments, colour profile), with identifying fields highlighted, and a field-by-field before-and-after comparison after cleaning.
 - **Keeps what you need.** Optionally keep orientation, capture dates and time zone, print resolution, the colour profile and, on desktop, the original file date.
 - **JSON reports.** Export a detailed report for one image or a whole batch: what was found, what was removed, verification results and fingerprints.
-- **Eight languages.** English, Español, Français, Deutsch, Português, العربية, اردو and 中文, with right-to-left layout for Arabic and Urdu.
+- **Eight languages.** English, Español, Français, Deutsch, Português, العربية, اردو and 中文, every screen and message fully translated, with right-to-left layout for Arabic and Urdu.
 - **Removes what you choose.** Each kind of metadata can be kept or removed. Content Credentials and colour profiles are kept unless you turn them off. Orientation can be kept so photos stay upright.
 - **Strict, crash-safe parsing.** Damaged or malformed files are rejected with a clear message. PNG checksums and WebP structure are validated, and the parsers are fuzz-tested.
 - **Never re-encodes.** Metadata is removed at the container level, so pixels, resolution, transparency, animation and colour data stay byte-for-byte identical.
