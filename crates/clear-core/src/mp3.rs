@@ -345,7 +345,9 @@ fn decode(enc: u8, b: &[u8]) -> String {
                 _ => (enc == 2, b),
             };
             let u: Vec<u16> = b
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| {
                     if be {
                         u16::from_be_bytes([c[0], c[1]])

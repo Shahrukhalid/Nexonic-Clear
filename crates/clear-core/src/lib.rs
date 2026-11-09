@@ -95,7 +95,10 @@ impl Format {
         let compat: Vec<&[u8]> = data
             .get(16..size)
             .unwrap_or_default()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| c.as_slice())
             .collect();
         let has = |b: &[u8]| major == b || compat.contains(&b);
         Some(match major {
