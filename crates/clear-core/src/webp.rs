@@ -1,6 +1,6 @@
 //! WebP: RIFF chunk-level parsing and rewriting. Bitstream chunks are copied as is.
 
-use crate::{le24, le32, malformed, Block, CleanOptions, Fnv, Kind, Parsed, Result};
+use crate::{le24, le32, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
 
 const F_ICC: u8 = 0x20;
 const F_ALPHA: u8 = 0x10;
@@ -14,22 +14,32 @@ struct Chunk<'a> {
     whole: &'a [u8],
 }
 
-fn chunks(d: &[u8]) -> Result<Vec<Chunk<'_>>> {
+/// RIFF chunks, plus any bytes after the RIFF container.
+fn chunks(d: &[u8]) -> Result<(Vec<Chunk<'_>>, &[u8])> {
     let riff = le32(d, 4).ok_or_else(|| malformed("truncated header"))? as usize;
-    let end = (riff + 8).min(d.len());
-    if riff + 8 > d.len() + 1 {
-        return Err(malformed("file is shorter than its header says"));
-    }
-    let mut out = Vec::new();
+    let end = riff
+        .checked_add(8)
+        .filter(|&e| e <= d.len() && riff >= 4)
+        .ok_or_else(|| malformed("file is shorter than its header says"))?;
+    let mut out: Vec<Chunk> = Vec::new();
     let mut i = 12;
-    while i + 8 <= end {
+    while i < end {
+        if i + 8 > end {
+            return Err(malformed("truncated chunk header"));
+        }
         let id: [u8; 4] = d[i..i + 4].try_into().unwrap();
         let len = le32(d, i + 4).unwrap() as usize;
         let data_end = i
             .checked_add(8 + len)
             .filter(|&e| e <= end)
             .ok_or_else(|| malformed("chunk runs past the end of the file"))?;
-        let padded = (data_end + (len & 1)).min(end);
+        let padded = data_end + (len & 1);
+        if padded > end {
+            return Err(malformed("missing chunk padding"));
+        }
+        if &id == b"VP8X" && !out.is_empty() {
+            return Err(malformed("VP8X must be the first chunk"));
+        }
         out.push(Chunk {
             id,
             data: &d[i + 8..data_end],
@@ -37,10 +47,14 @@ fn chunks(d: &[u8]) -> Result<Vec<Chunk<'_>>> {
         });
         i = padded;
     }
-    if out.is_empty() {
-        return Err(malformed("no chunks"));
+    let has = |id: &[u8; 4]| out.iter().any(|c| &c.id == id);
+    if !(has(b"VP8 ") || has(b"VP8L") || (has(b"ANIM") && has(b"ANMF"))) {
+        return Err(malformed("no image data"));
     }
-    Ok(out)
+    if (has(b"ALPH") || has(b"ANIM")) && !has(b"VP8X") {
+        return Err(malformed("extended features without VP8X"));
+    }
+    Ok((out, &d[end..]))
 }
 
 fn classify(id: &[u8; 4]) -> Option<(Kind, &'static str)> {
@@ -55,7 +69,7 @@ fn classify(id: &[u8; 4]) -> Option<(Kind, &'static str)> {
 }
 
 pub fn parse(d: &[u8]) -> Result<Parsed> {
-    let cs = chunks(d)?;
+    let (cs, trailer) = chunks(d)?;
     let mut p = Parsed {
         width: 0,
         height: 0,
@@ -63,9 +77,11 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
         animated: false,
         blocks: Vec::new(),
         exif_tiff: None,
-        fingerprint: 0,
+        fingerprint: [0; 32],
+        embedded: None,
+        warnings: Vec::new(),
     };
-    let mut fp = Fnv::new();
+    let mut fp = Digest::new();
     for c in &cs {
         match &c.id {
             b"VP8X" if c.data.len() >= 10 => {
@@ -113,12 +129,19 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
     if p.width == 0 || p.height == 0 {
         return Err(malformed("no image data"));
     }
+    if trailer.iter().any(|&b| b != 0) {
+        p.blocks.push(Block {
+            kind: Kind::Other,
+            label: "Data after end of image".into(),
+            size: trailer.len(),
+        });
+    }
     p.fingerprint = fp.finish();
     Ok(p)
 }
 
 pub fn clean(d: &[u8], o: &CleanOptions, minimal_exif: Option<&[u8]>) -> Result<Vec<u8>> {
-    let cs = chunks(d)?;
+    let (cs, trailer) = chunks(d)?;
     let has_vp8x = cs.iter().any(|c| &c.id == b"VP8X");
     let minimal_exif = minimal_exif.filter(|_| has_vp8x);
     let mut out = Vec::with_capacity(d.len());
@@ -157,6 +180,9 @@ pub fn clean(d: &[u8], o: &CleanOptions, minimal_exif: Option<&[u8]>) -> Result<
     }
     let size = (out.len() - 8) as u32;
     out[4..8].copy_from_slice(&size.to_le_bytes());
+    if !o.other {
+        out.extend_from_slice(trailer);
+    }
     Ok(out)
 }
 

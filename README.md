@@ -9,9 +9,12 @@
 - **Inspects real files.** EXIF (camera, dates, GPS location, serial numbers), XMP, IPTC, ICC colour profiles, comments, unknown blocks and data hidden after the image.
 - **Reads Content Credentials (C2PA).** Signer, signing time, the app that made the claim, recorded actions, and whether the credentials declare AI-generated content. Validation runs offline and reports exactly what the validator found.
 - **Removes what you choose.** Each kind of metadata can be kept or removed. Content Credentials and colour profiles are kept unless you turn them off. Orientation can be kept so photos stay upright.
+- **Strict, crash-safe parsing.** Damaged or malformed files are rejected with a clear message. PNG checksums and WebP structure are validated, and the parsers are fuzz-tested.
 - **Never re-encodes.** Metadata is removed at the container level, so pixels, resolution, transparency, animation and colour data stay byte-for-byte identical.
-- **Verifies every result.** Each output is parsed again and checked: image data identical to the original, nothing selected left behind, and the state of any kept credentials.
-- **Batch processing.** Clean many images at once and save them to a folder. Originals are never overwritten.
+- **Verifies every result.** Each output is parsed again and checked with SHA-256: image data identical to the original, kept embedded content identical, nothing selected left behind, and the state of any kept credentials.
+- **Keeps motion photos and HDR intact.** Motion-photo videos, depth maps and Ultra HDR gain maps stored after the main image are detected and kept unless you choose to remove them, and their internal index is updated so they still work.
+- **Folders and batches.** Drop files or whole folders (searched recursively) and clean them in one go. Results are stored on disk, not in memory, so large batches stay light on phones.
+- **Safe saving.** Only results that pass verification can be saved. Desktop saves are atomic, so a file is never left half-written, and originals are never overwritten.
 - **Private by design.** No network access, accounts, telemetry or ads. Files never leave your device.
 
 Supported formats: JPEG, PNG and WebP (including animated PNG and WebP).
