@@ -49,8 +49,10 @@ jobs:
       - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           workspaces: fuzz
-      # Not --locked: the pinned lockfile predates current nightly compilers.
-      - run: cargo install cargo-fuzz --version 0.13.1
+      # Build the cargo-fuzz tool with stable Rust; only the fuzzing itself needs nightly.
+      - run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install cargo-fuzz --version 0.13.1 --locked
       - name: Fuzz the parsers and cleaner for 3 minutes
         run: |
           mkdir -p fuzz/corpus
