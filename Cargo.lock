@@ -747,8 +747,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "clear-cli"
+version = "0.4.0"
+dependencies = [
+ "clear-core",
+ "ctrlc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "clear-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "c2pa",
  "image",
@@ -1022,6 +1032,17 @@ name = "ctor"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d"
+
+[[package]]
+name = "ctrlc"
+version = "3.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0b1fab2ae45819af2d0731d60f2afe17227ebb1a1538a236da84c93e9a60162"
+dependencies = [
+ "dispatch2",
+ "nix",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "ctutils"
@@ -2909,7 +2930,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexonic-clear"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clear-core",
  "serde",

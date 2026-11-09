@@ -255,6 +255,48 @@ async fn read_path(path: String) -> Result<Response, String> {
     read_image(&path).map(Response::new)
 }
 
+/// Files shared into the app from another app (Android share sheet). The
+/// Android activity copies them into `<cache>/shared`; each call moves them to
+/// a new folder and returns their paths, so every file is returned once.
+#[tauri::command]
+async fn take_shared(app: AppHandle) -> Vec<String> {
+    let Ok(cache) = app.path().app_cache_dir() else {
+        return Vec::new();
+    };
+    take_shared_from(&cache)
+}
+
+fn take_shared_from(cache: &Path) -> Vec<String> {
+    let inbox = cache.join("shared");
+    let Ok(rd) = std::fs::read_dir(&inbox) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    if files.is_empty() {
+        return Vec::new();
+    }
+    files.sort();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let taken = cache.join("shared-taken").join(stamp.to_string());
+    if std::fs::create_dir_all(&taken).is_err() {
+        return Vec::new();
+    }
+    files
+        .into_iter()
+        .filter_map(|f| {
+            let to = taken.join(f.file_name()?);
+            std::fs::rename(&f, &to).ok()?;
+            Some(to.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
 /// Expands dropped or chosen folders into supported image files, recursively.
 /// Symbolic links are not followed; at most 20,000 files are returned.
 fn expand(paths: Vec<String>) -> Vec<String> {
@@ -552,6 +594,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            take_shared,
             inspect,
             inspect_path,
             set_options,
@@ -651,5 +694,21 @@ mod tests {
         // A failing write leaves the destination untouched and cleans up.
         assert!(atomic_copy(&d.join("missing.bin"), &dest, None).is_err());
         assert_eq!(std::fs::read(&dest).unwrap(), vec![7u8; 100_000]);
+    }
+}
+
+#[cfg(test)]
+mod shared_tests {
+    #[test]
+    fn shared_files_are_returned_once() {
+        let cache = std::env::temp_dir().join(format!("nexonic-share-{}", std::process::id()));
+        std::fs::create_dir_all(cache.join("shared")).unwrap();
+        std::fs::write(cache.join("shared/a.jpg"), b"x").unwrap();
+        std::fs::write(cache.join("shared/b.mp4"), b"y").unwrap();
+        let got = super::take_shared_from(&cache);
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|p| std::path::Path::new(p).is_file()));
+        assert!(super::take_shared_from(&cache).is_empty());
+        let _ = std::fs::remove_dir_all(cache);
     }
 }

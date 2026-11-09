@@ -33,6 +33,27 @@ Supported formats:
 
 Audio and video are cleaned without re-encoding: tags, QuickTime location, make and model, XMP, cover art and Content Credentials are removed while every audio and video sample is copied byte for byte, and chunk offsets are rewritten and verified. On desktop, audio and video up to 64 GB are processed from disk. PDFs are rewritten as a complete new file, so removed document information, XMP and attachments do not survive in older revisions; encrypted PDFs are not supported.
 
+## Command-line tool
+
+`nexonic-clear-cli` uses the same engine and the same verification as the app. It runs on Windows, macOS and Linux.
+
+```sh
+nexonic-clear-cli inspect photo.heic                   # what is in a file
+nexonic-clear-cli clean -r ~/Pictures/trip -o ~/clean  # clean a folder into another folder
+nexonic-clear-cli clean --in-place --keep c2pa doc.pdf # replace the original, keep credentials
+nexonic-clear-cli clean --json clip.mov > report.json  # JSON report
+nexonic-clear-cli watch ~/Inbox --out ~/Clean          # clean new files as they arrive
+nexonic-clear-cli integrate install                    # add "Clean with Nexonic Clear" to the file manager
+```
+
+- Without `--out` or `--in-place`, cleaned copies are written next to the originals as `name.clean.ext`. Existing files are never replaced unless you pass `--overwrite`.
+- Files run in parallel (`-j` sets how many), progress goes to standard error, and Ctrl+C stops after the files in progress.
+- Exit codes: 0 success, 1 a result failed verification (nothing is written for it), 2 usage error, 3 a file could not be read or is unsupported, 130 cancelled.
+- `watch` waits until a new file stops changing, then cleans it into `--out`. Unverified results are never written.
+- `integrate install` adds the menu for the current user: Windows Explorer (files and folders), macOS Finder (Quick Action) and Linux (GNOME Files script and KDE Dolphin service menu). `integrate uninstall` removes it.
+
+On Android, share photos, audio, video or PDFs to Nexonic Clear from any app.
+
 ## Download
 
 <p align="center">

@@ -45,7 +45,7 @@ interface Item {
   info?: Inspection; error?: AppError; report?: CleanReport; outputId?: number; saved?: string;
 }
 
-const VERSION = "0.2.0";
+const VERSION = "0.4.0";
 const MIME: Record<Format, string> = {
   jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heif: "image/heic", avif: "image/avif",
   wav: "audio/wav", mp3: "audio/mpeg", mp4: "video/mp4", mov: "video/quicktime", m4a: "audio/mp4", pdf: "application/pdf",
@@ -181,6 +181,20 @@ async function addPaths(paths: string[]) {
   const files = await invoke<string[]>("expand_paths", { paths });
   await addSources(files.map((p) => ({ name: baseName(p), source: { path: p } })));
 }
+
+/** Files shared into the app from another app (Android share sheet). */
+async function takeShared() {
+  if (!isAndroid) return;
+  try {
+    const paths = await invoke<string[]>("take_shared");
+    if (paths.length) await addSources(paths.map((p) => ({ name: baseName(p), source: { path: p } })));
+  } catch {
+    /* nothing shared */
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void takeShared();
+});
 
 async function pickFiles() {
   try {
@@ -666,3 +680,5 @@ window.addEventListener("drop", onDrop);
 applyStatic();
 render();
 selftest();
+
+void takeShared();
