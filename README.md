@@ -8,10 +8,13 @@
 
 - **Inspects real files.** EXIF (camera, dates, GPS location, serial numbers), XMP, IPTC, ICC colour profiles, comments, unknown blocks and data hidden after the image.
 - **Reads Content Credentials (C2PA).** Signer, signing time, the app that made the claim, recorded actions, and whether the credentials declare AI-generated content. Validation runs offline and reports exactly what the validator found.
+- **Checks trust offline.** Each file is validated three ways: signature and integrity only, against the bundled C2PA trust list, and against the bundled interim trust list. Every result lists its failure codes.
+- **Inspects the whole manifest store.** Every manifest with its claim version, signer, assertions, ingredients and the passed, informational and failed checks.
+- **Reads `.c2pa` sidecar files.** A `photo.c2pa` or `photo.jpg.c2pa` next to an image is validated against that image (desktop).
 - **Shows every field.** A searchable list of all readable metadata (EXIF, GPS, XMP, IPTC, PNG text, comments, colour profile), with identifying fields highlighted, and a field-by-field before-and-after comparison after cleaning.
 - **Keeps what you need.** Optionally keep orientation, capture dates and time zone, print resolution, the colour profile and, on desktop, the original file date.
 - **JSON reports.** Export a detailed report for one image or a whole batch: what was found, what was removed, verification results and fingerprints.
-- **Eight languages.** English, Español, Français, Deutsch, Português, العربية, اردو and 中文, with right-to-left layout for Arabic and Urdu.
+- **Eight languages.** English, Español, Français, Deutsch, Português, العربية, اردو and 中文, every screen and message fully translated, with right-to-left layout for Arabic and Urdu.
 - **Removes what you choose.** Each kind of metadata can be kept or removed. Content Credentials and colour profiles are kept unless you turn them off. Orientation can be kept so photos stay upright.
 - **Strict, crash-safe parsing.** Damaged or malformed files are rejected with a clear message. PNG checksums and WebP structure are validated, and the parsers are fuzz-tested.
 - **Never re-encodes.** Metadata is removed at the container level, so pixels, resolution, transparency, animation and colour data stay byte-for-byte identical.

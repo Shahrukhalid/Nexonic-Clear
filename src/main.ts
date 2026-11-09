@@ -15,6 +15,14 @@ interface Credentials {
   present: boolean; state: string; claim_generator: string | null; title: string | null;
   issuer: string | null; signed_at: string | null; algorithm: string | null;
   ai_generated: boolean; actions: string[]; manifests: number; problems: string[];
+  source: string; profiles: Profile[]; store: ManifestInfo[];
+}
+interface Profile { id: string; state: string; failures: string[] }
+interface IngredientInfo { title: string | null; format: string | null; relationship: string; manifest: string | null; failure: string[] }
+interface ManifestInfo {
+  label: string; active: boolean; claim_version: number | null; title: string | null; format: string | null;
+  generator: string | null; issuer: string | null; signed_at: string | null; algorithm: string | null;
+  assertions: string[]; ingredients: IngredientInfo[]; success: string[]; informational: string[]; failure: string[];
 }
 interface Inspection {
   format: Format; width: number; height: number; has_alpha: boolean; animated: boolean; size: number;
@@ -346,7 +354,42 @@ function credentialsCard(c: Credentials): string {
     <p class="small">${t(`credx.${state}`)}</p>
     ${c.ai_generated ? `<p class="flag">${t("credAi")}</p>` : ""}
     <dl>${rows.filter((r) => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v!)}</dd>`).join("")}</dl>
+    ${c.source === "sidecar" ? `<p class="small">${t("credSidecar")}</p>` : ""}
+    ${profilesTable(c.profiles ?? [])}
     ${c.problems.length ? `<details><summary>${t("credMessages", { n: c.problems.length })}</summary><ul class="small">${c.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></details>` : ""}
+    ${(c.store ?? []).length ? `<details><summary>${t("storeTitle", { n: c.store.length })}</summary>${c.store.map(manifestBlock).join("")}</details>` : ""}
+  </div>`;
+}
+
+function stateBadge(state: string): string {
+  const s = ["trusted", "valid", "invalid", "unreadable"].includes(state) ? state : "unreadable";
+  return `<span class="badge ${s === "trusted" || s === "valid" ? "ok" : "bad"}">${t(`cred.${s}`)}</span>`;
+}
+
+function profilesTable(list: Profile[]): string {
+  if (!list.length) return "";
+  return `<table class="profiles"><thead><tr><th>${t("profile")}</th><th>${t("result")}</th></tr></thead><tbody>${list
+    .map((p) => `<tr><td>${t(`profile.${p.id}`)}</td><td>${stateBadge(p.state)}${p.failures.length
+      ? `<ul class="small">${p.failures.slice(0, 8).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}</td></tr>`)
+    .join("")}</tbody></table>`;
+}
+
+function manifestBlock(m: ManifestInfo): string {
+  const rows: [string, string | null][] = [
+    [t("mLabel"), m.label], [t("claimVersion"), m.claim_version != null ? `v${m.claim_version}` : null],
+    [t("title"), m.title], [t("format"), m.format], [t("madeWith"), m.generator], [t("signedBy"), m.issuer],
+    [t("signedAt"), m.signed_at], [t("algorithm"), m.algorithm],
+  ];
+  const list = (head: string, items: string[]) => items.length
+    ? `<p class="small"><strong>${head}</strong></p><ul class="small">${items.slice(0, 60).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  return `<div class="manifest${m.active ? " active" : ""}">
+    <h5>${m.active ? t("mActive") : t("mIngredient")}</h5>
+    <dl>${rows.filter((r) => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v!)}</dd>`).join("")}</dl>
+    ${list(t("assertions"), m.assertions)}
+    ${list(t("ingredients"), m.ingredients.map((i) => `${i.title ?? "?"} (${i.relationship}${i.format ? `, ${i.format}` : ""})${i.failure.length ? ` – ${i.failure.join("; ")}` : ""}`))}
+    ${list(t("codesFailure"), m.failure)}
+    ${list(t("codesInfo"), m.informational)}
+    ${list(t("codesSuccess"), m.success)}
   </div>`;
 }
 
@@ -549,7 +592,7 @@ async function selftest() {
   try {
     const bytes = sample;
     const before = await api.inspect(bytes);
-    if (!before.credentials.present || before.credentials.state !== "valid") return fail(`credentials: ${JSON.stringify(before.credentials)}`);
+    if (!before.credentials.present || before.credentials.state !== "valid" || before.credentials.profiles.length !== 3 || !before.credentials.store.length) return fail(`credentials: ${JSON.stringify(before.credentials)}`);
     const all: Options = { exif: true, xmp: true, iptc: true, icc: true, c2pa: true, comments: true, other: true, embedded: true, keep_orientation: false, keep_dates: false, keep_resolution: false };
     const r = await api.clean(bytes, all);
     const out = await api.output(r.id);

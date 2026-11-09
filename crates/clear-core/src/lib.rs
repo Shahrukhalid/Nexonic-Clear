@@ -8,7 +8,7 @@
 //! videos and extra images are tracked separately and kept unless removed.
 
 #[cfg(feature = "c2pa")]
-mod credentials;
+pub mod credentials;
 mod details;
 mod exif;
 mod jpeg;
@@ -104,6 +104,50 @@ pub struct Credentials {
     pub actions: Vec<String>,
     pub manifests: usize,
     pub problems: Vec<String>,
+    /// "embedded" or "sidecar" (a separate `.c2pa` file); empty when absent.
+    #[serde(default)]
+    pub source: String,
+    /// One result per validation profile: "signature", "official", "interim".
+    #[serde(default)]
+    pub profiles: Vec<ProfileResult>,
+    /// Every manifest in the store, active manifest first.
+    #[serde(default)]
+    pub store: Vec<ManifestInfo>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ProfileResult {
+    pub id: String,
+    /// "trusted", "valid", "invalid" or "unreadable".
+    pub state: String,
+    pub failures: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ManifestInfo {
+    pub label: String,
+    pub active: bool,
+    pub claim_version: Option<u8>,
+    pub title: Option<String>,
+    pub format: Option<String>,
+    pub generator: Option<String>,
+    pub issuer: Option<String>,
+    pub signed_at: Option<String>,
+    pub algorithm: Option<String>,
+    pub assertions: Vec<String>,
+    pub ingredients: Vec<IngredientInfo>,
+    pub success: Vec<String>,
+    pub informational: Vec<String>,
+    pub failure: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct IngredientInfo {
+    pub title: Option<String>,
+    pub format: Option<String>,
+    pub relationship: String,
+    pub manifest: Option<String>,
+    pub failure: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,6 +327,25 @@ fn check(data: &[u8]) -> Result<Format> {
 
 /// Inspect an image held in memory.
 pub fn inspect(data: &[u8]) -> Result<Inspection> {
+    inspect_inner(data, None)
+}
+
+/// Inspects an image together with a separate `.c2pa` manifest file. The
+/// sidecar is validated against the image; embedded credentials, if any,
+/// take precedence.
+pub fn inspect_with_sidecar(data: &[u8], sidecar: &[u8]) -> Result<Inspection> {
+    if sidecar.len() > MAX_SIDECAR {
+        return Err(Error::TooLarge);
+    }
+    inspect_inner(data, Some(sidecar))
+}
+
+/// Largest accepted `.c2pa` sidecar.
+pub const MAX_SIDECAR: usize = 32 * 1024 * 1024;
+
+fn inspect_inner(data: &[u8], sidecar: Option<&[u8]>) -> Result<Inspection> {
+    #[cfg(not(feature = "c2pa"))]
+    let _ = sidecar;
     let format = check(data)?;
     let p = parse(format, data)?;
     let exif = p.exif_tiff.as_deref().and_then(exif::summarize);
@@ -295,7 +358,9 @@ pub fn inspect(data: &[u8]) -> Result<Inspection> {
     details.truncate(2000);
     #[cfg(feature = "c2pa")]
     let credentials = if p.blocks.iter().any(|b| b.kind == Kind::C2pa) {
-        credentials::read(format, data)
+        credentials::read(format, data, credentials::Source::Embedded)
+    } else if let Some(m) = sidecar {
+        credentials::read(format, data, credentials::Source::Sidecar(m))
     } else {
         Credentials::default()
     };
