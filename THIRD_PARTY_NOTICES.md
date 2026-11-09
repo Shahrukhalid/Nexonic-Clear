@@ -22,3 +22,18 @@ The images and test signing keys in `crates/clear-core/tests/fixtures` come
 from the C2PA Rust SDK (Copyright 2022 Adobe, MIT license; see
 `LICENSE-c2pa-rs-MIT` in that folder). They are used only by the test suite and
 are not included in any build.
+
+## Trust lists
+
+The certificate lists in `crates/clear-core/trust` are built into the app and
+used only for offline validation:
+
+- `C2PA-TRUST-LIST.pem` and `C2PA-TSA-TRUST-LIST.pem`: the C2PA Conformance
+  Program trust lists, from https://github.com/c2pa-org/conformance-public
+  (`trust-list/`). Copyright Coalition for Content Provenance and Authenticity,
+  licensed under Creative Commons Attribution 4.0 International
+  (https://creativecommons.org/licenses/by/4.0/). Included unmodified.
+- `interim-anchors.pem`, `interim-allowed.pem` and `store.cfg`: the interim
+  (frozen) Content Credentials trust list, from
+  https://github.com/contentauth/verify-site (`static/trust/`), licensed under
+  the Apache License 2.0. Included unmodified.

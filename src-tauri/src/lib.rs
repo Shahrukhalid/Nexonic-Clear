@@ -160,7 +160,35 @@ async fn inspect(request: Request<'_>) -> Result<Inspection, String> {
 
 #[tauri::command]
 async fn inspect_path(path: String) -> Result<Inspection, String> {
-    clear_core::inspect(&read_image(&path)?).map_err(core_err)
+    let data = read_image(&path)?;
+    match sidecar_for(Path::new(&path)) {
+        Some(m) => clear_core::inspect_with_sidecar(&data, &m),
+        None => clear_core::inspect(&data),
+    }
+    .map_err(core_err)
+}
+
+/// A separate Content Credentials file next to the image: `photo.c2pa` or
+/// `photo.jpg.c2pa`. Symbolic links and oversized files are ignored.
+fn sidecar_for(image: &Path) -> Option<Vec<u8>> {
+    let mut candidates = vec![image.with_extension("c2pa")];
+    if let Some(name) = image.file_name() {
+        let mut n = name.to_os_string();
+        n.push(".c2pa");
+        candidates.push(image.with_file_name(n));
+    }
+    for c in candidates {
+        let Ok(meta) = std::fs::symlink_metadata(&c) else {
+            continue;
+        };
+        if !meta.is_file() || meta.len() as usize > clear_core::MAX_SIDECAR {
+            continue;
+        }
+        if let Ok(bytes) = std::fs::read(&c) {
+            return Some(bytes);
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -518,6 +546,22 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_sidecar_next_to_image() {
+        let dir = std::env::temp_dir().join(format!("clear-sidecar-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("a.jpg");
+        let b = dir.join("b.png");
+        std::fs::write(&a, b"x").unwrap();
+        std::fs::write(&b, b"x").unwrap();
+        assert!(sidecar_for(&a).is_none());
+        std::fs::write(dir.join("a.c2pa"), b"one").unwrap();
+        std::fs::write(dir.join("b.png.c2pa"), b"two").unwrap();
+        assert_eq!(sidecar_for(&a).as_deref(), Some(&b"one"[..]));
+        assert_eq!(sidecar_for(&b).as_deref(), Some(&b"two"[..]));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("clear-test-{name}-{}", std::process::id()));

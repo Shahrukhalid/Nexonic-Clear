@@ -153,3 +153,11 @@ summary { cursor: pointer; color: var(--muted); }
 [dir="rtl"] .files { border-right: 0; border-left: 1px solid var(--line); }
 [dir="rtl"] .options { border-left: 0; border-right: 1px solid var(--line); }
 @media (max-width: 900px) { .top-actions { flex-wrap: wrap; justify-content: flex-end; } .compare table { font-size: 11.5px; } }
+.profiles { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+.profiles th, .profiles td { text-align: start; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+.profiles th { color: var(--muted); font-weight: 600; }
+.profiles ul { margin: 4px 0 0; padding-inline-start: 18px; }
+.manifest { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.manifest h5 { margin: 0 0 6px; font-size: 13px; }
+.manifest.active h5 { color: var(--ok); }
+.manifest ul { margin: 2px 0 6px; padding-inline-start: 18px; word-break: break-word; }
