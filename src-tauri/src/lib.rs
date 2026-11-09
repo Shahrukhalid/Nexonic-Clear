@@ -25,6 +25,8 @@ fn set_options(options: CleanOptions, settings: State<'_, Settings>) {
 
 struct Output {
     file: PathBuf,
+    /// The original file, so its modification time can be carried over.
+    source: Option<PathBuf>,
     verified: bool,
     format: Format,
 }
@@ -41,13 +43,18 @@ struct Cleaned {
     report: CleanReport,
 }
 
-const TOO_LARGE: &str = "The file is larger than 256 MB.";
-const UNVERIFIED: &str = "This result did not pass verification and cannot be saved.";
+// Errors cross IPC as "code|message" so the interface can translate them.
+const TOO_LARGE: &str = "too_large|The file is larger than 256 MB.";
+const UNVERIFIED: &str = "unverified|This result did not pass verification and cannot be saved.";
+
+fn core_err(e: clear_core::Error) -> String {
+    format!("{}|{e}", e.code())
+}
 
 /// Desktop webviews deliver a Uint8Array as a raw body. The Android webview
 /// serialises it as JSON (an array, or an object keyed by index), so accept both.
 fn body(request: &Request<'_>) -> Result<Vec<u8>, String> {
-    let bad = || "Expected image bytes.".to_string();
+    let bad = || "malformed|Expected image bytes.".to_string();
     match request.body() {
         InvokeBody::Raw(data) => Ok(data.clone()),
         InvokeBody::Json(serde_json::Value::Array(items)) => items
@@ -78,16 +85,16 @@ fn body(request: &Request<'_>) -> Result<Vec<u8>, String> {
 /// Reads a file chosen by the user (dialog or drag and drop), refusing
 /// anything that is not a supported image.
 fn read_image(path: &str) -> Result<Vec<u8>, String> {
-    let meta = std::fs::metadata(path).map_err(|e| format!("Could not open the file: {e}"))?;
+    let meta = std::fs::metadata(path).map_err(|e| format!("io|Could not open the file: {e}"))?;
     if !meta.is_file() {
-        return Err("Not a file.".into());
+        return Err("io|Not a file.".into());
     }
     if meta.len() > clear_core::MAX_FILE_SIZE as u64 {
         return Err(TOO_LARGE.into());
     }
-    let data = std::fs::read(path).map_err(|e| format!("Could not read the file: {e}"))?;
+    let data = std::fs::read(path).map_err(|e| format!("io|Could not read the file: {e}"))?;
     if Format::detect(&data).is_none() {
-        return Err(clear_core::Error::Unsupported.to_string());
+        return Err(core_err(clear_core::Error::Unsupported));
     }
     Ok(data)
 }
@@ -96,9 +103,9 @@ fn output_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_cache_dir()
-        .map_err(|_| "No private storage available.".to_string())?
+        .map_err(|_| "io|No private storage available.".to_string())?
         .join("outputs");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Could not prepare storage: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("io|Could not prepare storage: {e}"))?;
     Ok(dir)
 }
 
@@ -115,15 +122,17 @@ fn store(
     outputs: &Outputs,
     data: &[u8],
     report: &CleanReport,
+    source: Option<PathBuf>,
 ) -> Result<u64, String> {
     let id = outputs.next.fetch_add(1, Ordering::Relaxed);
     let format = report.after.format;
     let file = output_dir(app)?.join(format!("{id}.{}", ext(format)));
-    std::fs::write(&file, data).map_err(|e| format!("Could not store the result: {e}"))?;
+    std::fs::write(&file, data).map_err(|e| format!("io|Could not store the result: {e}"))?;
     outputs.files.lock().unwrap().insert(
         id,
         Output {
             file,
+            source,
             verified: report.verified,
             format,
         },
@@ -136,21 +145,22 @@ fn run_clean(
     outputs: &Outputs,
     settings: &Settings,
     data: &[u8],
+    source: Option<PathBuf>,
 ) -> Result<Cleaned, String> {
     let options = settings.0.lock().unwrap().clone().unwrap_or_default();
-    let (out, report) = clear_core::clean_and_verify(data, &options).map_err(|e| e.to_string())?;
-    let id = store(app, outputs, &out, &report)?;
+    let (out, report) = clear_core::clean_and_verify(data, &options).map_err(core_err)?;
+    let id = store(app, outputs, &out, &report, source)?;
     Ok(Cleaned { id, report })
 }
 
 #[tauri::command]
 async fn inspect(request: Request<'_>) -> Result<Inspection, String> {
-    clear_core::inspect(&body(&request)?).map_err(|e| e.to_string())
+    clear_core::inspect(&body(&request)?).map_err(core_err)
 }
 
 #[tauri::command]
 async fn inspect_path(path: String) -> Result<Inspection, String> {
-    clear_core::inspect(&read_image(&path)?).map_err(|e| e.to_string())
+    clear_core::inspect(&read_image(&path)?).map_err(core_err)
 }
 
 #[tauri::command]
@@ -160,7 +170,7 @@ async fn clean(
     outputs: State<'_, Outputs>,
     settings: State<'_, Settings>,
 ) -> Result<Cleaned, String> {
-    run_clean(&app, &outputs, &settings, &body(&request)?)
+    run_clean(&app, &outputs, &settings, &body(&request)?, None)
 }
 
 #[tauri::command]
@@ -170,7 +180,13 @@ async fn clean_path(
     outputs: State<'_, Outputs>,
     settings: State<'_, Settings>,
 ) -> Result<Cleaned, String> {
-    run_clean(&app, &outputs, &settings, &read_image(&path)?)
+    run_clean(
+        &app,
+        &outputs,
+        &settings,
+        &read_image(&path)?,
+        Some(PathBuf::from(&path)),
+    )
 }
 
 /// Original image bytes for the preview thumbnail (supported images only).
@@ -222,47 +238,68 @@ async fn expand_paths(paths: Vec<String>) -> Vec<String> {
     expand(paths)
 }
 
-fn verified_file(outputs: &Outputs, id: u64) -> Result<(PathBuf, Format), String> {
+struct Ready {
+    file: PathBuf,
+    source: Option<PathBuf>,
+    format: Format,
+}
+
+fn verified_file(outputs: &Outputs, id: u64) -> Result<Ready, String> {
     let files = outputs.files.lock().unwrap();
     let o = files
         .get(&id)
-        .ok_or("This result is no longer available.")?;
+        .ok_or("gone|This result is no longer available.")?;
     if !o.verified {
         return Err(UNVERIFIED.into());
     }
-    Ok((o.file.clone(), o.format))
+    Ok(Ready {
+        file: o.file.clone(),
+        source: o.source.clone(),
+        format: o.format,
+    })
 }
 
 /// Cleaned bytes for platforms that save through the webview (Android).
 #[tauri::command]
 async fn output(id: u64, outputs: State<'_, Outputs>) -> Result<Response, String> {
-    let (file, _) = verified_file(&outputs, id)?;
-    std::fs::read(file)
+    let ready = verified_file(&outputs, id)?;
+    std::fs::read(ready.file)
         .map(Response::new)
-        .map_err(|e| e.to_string())
+        .map_err(|e| format!("io|{e}"))
 }
 
-/// Writes `src` to `dest` atomically: temporary file in the same folder,
+/// Writes `data` to `dest` atomically: temporary file in the same folder,
 /// flushed to disk, then renamed. The destination never holds partial data.
-fn atomic_copy(src: &Path, dest: &Path) -> Result<(), String> {
-    let dir = dest.parent().ok_or("Invalid destination.")?;
+/// When `time_from` is given, the file's modification time is copied from it.
+fn atomic_write(data: &[u8], dest: &Path, time_from: Option<&Path>) -> Result<(), String> {
+    let dir = dest.parent().ok_or("io|Invalid destination.")?;
     let name = dest
         .file_name()
-        .ok_or("Invalid destination.")?
+        .ok_or("io|Invalid destination.")?
         .to_string_lossy();
     let tmp = dir.join(format!(".{name}.{}.part", std::process::id()));
+    let modified = time_from
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok());
     let result = (|| -> std::io::Result<()> {
-        let data = std::fs::read(src)?;
         let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(&data)?;
+        f.write_all(data)?;
         f.sync_all()?;
+        if let Some(t) = modified {
+            f.set_modified(t)?;
+        }
         drop(f);
         std::fs::rename(&tmp, dest)
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
-    result.map_err(|e| format!("Could not save: {e}"))
+    result.map_err(|e| format!("io|Could not save: {e}"))
+}
+
+fn atomic_copy(src: &Path, dest: &Path, time_from: Option<&Path>) -> Result<(), String> {
+    let data = std::fs::read(src).map_err(|e| format!("io|Could not save: {e}"))?;
+    atomic_write(&data, dest, time_from)
 }
 
 #[derive(Serialize)]
@@ -277,30 +314,32 @@ async fn save_one(
     app: AppHandle,
     id: u64,
     name: String,
+    keep_time: bool,
     outputs: State<'_, Outputs>,
 ) -> Result<Option<String>, String> {
     #[cfg(mobile)]
     {
-        let _ = (app, id, name, outputs);
-        return Err("Saving this way is available on desktop only.".into());
+        let _ = (app, id, name, keep_time, outputs);
+        return Err("io|Saving this way is available on desktop only.".into());
     }
     #[cfg(desktop)]
     {
         use tauri_plugin_dialog::DialogExt;
-        let (file, format) = verified_file(&outputs, id)?;
+        let ready = verified_file(&outputs, id)?;
         let Some(dest) = app
             .dialog()
             .file()
             .set_file_name(&name)
-            .add_filter("Image", &[ext(format)])
+            .add_filter("Image", &[ext(ready.format)])
             .blocking_save_file()
         else {
             return Ok(None);
         };
         let dest = dest
             .into_path()
-            .map_err(|_| "Unsupported destination.".to_string())?;
-        atomic_copy(&file, &dest)?;
+            .map_err(|_| "io|Unsupported destination.".to_string())?;
+        let time_from = ready.source.as_deref().filter(|_| keep_time);
+        atomic_copy(&ready.file, &dest, time_from)?;
         Ok(dest.file_name().map(|n| n.to_string_lossy().into_owned()))
     }
 }
@@ -311,12 +350,13 @@ async fn save_one(
 async fn save_all(
     app: AppHandle,
     items: Vec<(u64, String)>,
+    keep_time: bool,
     outputs: State<'_, Outputs>,
 ) -> Result<Option<(String, Vec<Saved>)>, String> {
     #[cfg(mobile)]
     {
-        let _ = (app, items, outputs);
-        return Err("Saving this way is available on desktop only.".into());
+        let _ = (app, items, keep_time, outputs);
+        return Err("io|Saving this way is available on desktop only.".into());
     }
     #[cfg(desktop)]
     {
@@ -326,10 +366,10 @@ async fn save_all(
         };
         let dir = dir
             .into_path()
-            .map_err(|_| "Unsupported folder.".to_string())?;
+            .map_err(|_| "io|Unsupported folder.".to_string())?;
         let mut saved = Vec::new();
         for (id, name) in items {
-            let Ok((file, _)) = verified_file(&outputs, id) else {
+            let Ok(ready) = verified_file(&outputs, id) else {
                 continue;
             };
             let safe: String = name
@@ -352,13 +392,44 @@ async fn save_all(
                 dest = dir.join(format!("{stem}-{n}{extn}"));
                 n += 1;
             }
-            atomic_copy(&file, &dest)?;
+            let time_from = ready.source.as_deref().filter(|_| keep_time);
+            atomic_copy(&ready.file, &dest, time_from)?;
             saved.push(Saved {
                 id,
                 name: dest.file_name().unwrap().to_string_lossy().into_owned(),
             });
         }
         Ok(Some((dir.to_string_lossy().into_owned(), saved)))
+    }
+}
+
+/// Desktop: saves a JSON report atomically to a location the user chooses.
+#[tauri::command]
+async fn save_report(app: AppHandle, json: String, name: String) -> Result<Option<String>, String> {
+    #[cfg(mobile)]
+    {
+        let _ = (app, json, name);
+        return Err("io|Saving this way is available on desktop only.".into());
+    }
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_dialog::DialogExt;
+        serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|_| "malformed|Invalid report.".to_string())?;
+        let Some(dest) = app
+            .dialog()
+            .file()
+            .set_file_name(&name)
+            .add_filter("JSON report", &["json"])
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let dest = dest
+            .into_path()
+            .map_err(|_| "io|Unsupported destination.".to_string())?;
+        atomic_write(json.as_bytes(), &dest, None)?;
+        Ok(dest.file_name().map(|n| n.to_string_lossy().into_owned()))
     }
 }
 
@@ -434,6 +505,7 @@ pub fn run() {
             output,
             save_one,
             save_all,
+            save_report,
             discard,
             selftest_sample,
             selftest_path,
@@ -493,8 +565,10 @@ mod tests {
         let dest = d.join("out.jpg");
         std::fs::write(&src, vec![7u8; 100_000]).unwrap();
         std::fs::write(&dest, b"old contents").unwrap();
-        atomic_copy(&src, &dest).unwrap();
+        atomic_copy(&src, &dest, Some(&src)).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), vec![7u8; 100_000]);
+        let t = |p: &Path| std::fs::metadata(p).unwrap().modified().unwrap();
+        assert_eq!(t(&dest), t(&src), "modification time carried over");
         let leftovers: Vec<_> = std::fs::read_dir(&d)
             .unwrap()
             .flatten()
@@ -502,7 +576,7 @@ mod tests {
             .collect();
         assert!(leftovers.is_empty());
         // A failing write leaves the destination untouched and cleans up.
-        assert!(atomic_copy(&d.join("missing.bin"), &dest).is_err());
+        assert!(atomic_copy(&d.join("missing.bin"), &dest, None).is_err());
         assert_eq!(std::fs::read(&dest).unwrap(), vec![7u8; 100_000]);
     }
 }

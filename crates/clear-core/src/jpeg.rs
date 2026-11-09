@@ -5,7 +5,7 @@
 //! secondary images such as depth maps or Ultra HDR gain maps) are
 //! `Kind::Embedded`; anything else non-zero is `Kind::Other`.
 
-use crate::{be16, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
+use crate::{be16, details, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
 
 enum Seg<'a> {
     /// A marker segment with a length field: (marker, whole segment bytes incl. FFxx and length, payload)
@@ -162,6 +162,7 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
         fingerprint: [0; 32],
         embedded: None,
         warnings: Vec::new(),
+        fields: Vec::new(),
     };
     let mut fp = Digest::new();
     let mut embedded = Digest::new();
@@ -173,6 +174,19 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
                 if let Some((kind, label)) = classify(*m, payload) {
                     if kind == Kind::Exif && p.exif_tiff.is_none() {
                         p.exif_tiff = payload.get(6..).map(<[u8]>::to_vec);
+                    }
+                    match (*m, kind) {
+                        (0xE1, Kind::Xmp)
+                            if payload.starts_with(b"http://ns.adobe.com/xap/1.0/\0") =>
+                        {
+                            p.fields.extend(details::xmp(&payload[29..]))
+                        }
+                        (0xED, Kind::Iptc) => p.fields.extend(details::iptc(payload)),
+                        (0xFE, _) => p.fields.push(details::comment(payload)),
+                        (0xE2, Kind::Icc) if payload.get(12) == Some(&1) => p
+                            .fields
+                            .extend(details::icc_header(payload.get(14..).unwrap_or_default())),
+                        _ => {}
                     }
                     if kind == Kind::Embedded {
                         has_embedded = true;

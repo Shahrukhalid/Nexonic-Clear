@@ -68,6 +68,8 @@ fn mutated_real_files_never_panic_and_clean_output_is_stable() {
             other: true,
             embedded: true,
             keep_orientation: false,
+            keep_dates: false,
+            keep_resolution: false,
         },
     ];
     let mut checked = 0;

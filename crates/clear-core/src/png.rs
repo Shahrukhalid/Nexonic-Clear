@@ -1,6 +1,6 @@
 //! PNG: chunk-level parsing and rewriting. Pixel data (IDAT/fdAT) is copied as is.
 
-use crate::{be32, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
+use crate::{be32, details, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
 
 struct Chunk<'a> {
     ty: [u8; 4],
@@ -141,6 +141,7 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
         fingerprint: [0; 32],
         embedded: None,
         warnings: Vec::new(),
+        fields: Vec::new(),
     };
     if p.width == 0 || p.height == 0 {
         return Err(malformed("invalid image dimensions"));
@@ -151,6 +152,24 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
             if &c.ty == b"eXIf" && p.exif_tiff.is_none() {
                 let data = c.data.strip_prefix(b"Exif\0\0").unwrap_or(c.data);
                 p.exif_tiff = Some(data.to_vec());
+            }
+            if matches!(&c.ty, b"tEXt" | b"zTXt" | b"iTXt") {
+                if kind == Kind::Xmp && &c.ty == b"iTXt" {
+                    // keyword\0 compression-flag method lang\0 translated\0 text
+                    let parts: Vec<&[u8]> = c.data.splitn(2, |&b| b == 0).collect();
+                    if let Some(rest) = parts.get(1) {
+                        if rest.first() == Some(&0) {
+                            let mut tail = rest.get(2..).unwrap_or_default();
+                            for _ in 0..2 {
+                                let n = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
+                                tail = tail.get(n + 1..).unwrap_or_default();
+                            }
+                            p.fields.extend(details::xmp(tail));
+                        }
+                    }
+                } else if let Some(f) = details::png_text(&c.ty, c.data) {
+                    p.fields.push(f);
+                }
             }
             p.blocks.push(Block {
                 kind,
