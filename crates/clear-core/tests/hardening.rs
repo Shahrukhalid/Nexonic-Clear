@@ -22,6 +22,8 @@ fn strip_all() -> CleanOptions {
         other: true,
         embedded: true,
         keep_orientation: false,
+        keep_dates: false,
+        keep_resolution: false,
     }
 }
 
@@ -89,7 +91,7 @@ fn motion_photo_video_is_kept_by_default_and_removable() {
     assert!(r.verified, "{:?}", r.problems);
     assert!(out.ends_with(&video), "video must be byte-identical");
     assert_eq!(r.after.embedded_fingerprint, before.embedded_fingerprint);
-    assert!(r.notes.iter().any(|n| n.contains("XMP was removed")));
+    assert!(r.notes.iter().any(|n| n.code == "motion_xmp_removed"));
 
     let opts = CleanOptions {
         embedded: true,

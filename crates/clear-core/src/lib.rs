@@ -9,6 +9,7 @@
 
 #[cfg(feature = "c2pa")]
 mod credentials;
+mod details;
 mod exif;
 mod jpeg;
 mod png;
@@ -16,7 +17,21 @@ mod webp;
 
 use serde::{Deserialize, Serialize};
 
-pub use exif::ExifSummary;
+pub use exif::{ExifSummary, Field};
+
+/// A plain-language message with a stable code, so apps can translate it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Message {
+    pub code: String,
+    pub text: String,
+}
+
+fn msg(code: &str, text: &str) -> Message {
+    Message {
+        code: code.into(),
+        text: text.into(),
+    }
+}
 
 /// Largest file accepted, to bound memory use on phones.
 pub const MAX_FILE_SIZE: usize = 256 * 1024 * 1024;
@@ -110,6 +125,9 @@ pub struct Inspection {
     /// Facts the user should know, e.g. a motion photo whose descriptor is missing.
     #[serde(default)]
     pub warnings: Vec<String>,
+    /// Every readable field: EXIF, GPS, XMP, IPTC, text chunks, comments, ICC header.
+    #[serde(default)]
+    pub details: Vec<Field>,
 }
 
 impl Inspection {
@@ -134,6 +152,16 @@ pub struct CleanOptions {
     /// When EXIF is removed, write back only the orientation tag so the image
     /// still displays the right way up.
     pub keep_orientation: bool,
+    /// When EXIF is removed, keep the capture and modification dates and time zones.
+    #[serde(default)]
+    pub keep_dates: bool,
+    /// When EXIF is removed, keep the print resolution (DPI).
+    #[serde(default = "yes")]
+    pub keep_resolution: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for CleanOptions {
@@ -148,6 +176,8 @@ impl Default for CleanOptions {
             other: true,
             embedded: false,
             keep_orientation: true,
+            keep_dates: false,
+            keep_resolution: true,
         }
     }
 }
@@ -183,10 +213,10 @@ pub struct CleanReport {
     pub verified: bool,
     /// Why verification failed, if it did.
     #[serde(default)]
-    pub problems: Vec<String>,
+    pub problems: Vec<Message>,
     /// Plain-language notes, e.g. that keeping credentials while editing other
     /// metadata breaks their hash binding.
-    pub notes: Vec<String>,
+    pub notes: Vec<Message>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -210,6 +240,17 @@ impl std::fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
+impl Error {
+    /// Stable code for apps: "unsupported", "too_large" or "malformed".
+    pub fn code(&self) -> &'static str {
+        match self {
+            Error::Unsupported => "unsupported",
+            Error::TooLarge => "too_large",
+            Error::Malformed(_) => "malformed",
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) struct Parsed {
@@ -222,6 +263,7 @@ pub(crate) struct Parsed {
     pub fingerprint: [u8; 32],
     pub embedded: Option<[u8; 32]>,
     pub warnings: Vec<String>,
+    pub fields: Vec<Field>,
 }
 
 fn parse(format: Format, data: &[u8]) -> Result<Parsed> {
@@ -244,6 +286,13 @@ pub fn inspect(data: &[u8]) -> Result<Inspection> {
     let format = check(data)?;
     let p = parse(format, data)?;
     let exif = p.exif_tiff.as_deref().and_then(exif::summarize);
+    let mut details = p
+        .exif_tiff
+        .as_deref()
+        .map(exif::all_fields)
+        .unwrap_or_default();
+    details.extend(p.fields);
+    details.truncate(2000);
     #[cfg(feature = "c2pa")]
     let credentials = if p.blocks.iter().any(|b| b.kind == Kind::C2pa) {
         credentials::read(format, data)
@@ -269,6 +318,7 @@ pub fn inspect(data: &[u8]) -> Result<Inspection> {
         image_fingerprint: hex(&p.fingerprint),
         embedded_fingerprint: p.embedded.as_ref().map(|d| hex(d)),
         warnings: p.warnings,
+        details,
     })
 }
 
@@ -276,15 +326,18 @@ pub fn inspect(data: &[u8]) -> Result<Inspection> {
 pub fn clean(data: &[u8], opts: &CleanOptions) -> Result<Vec<u8>> {
     let format = check(data)?;
     let p = parse(format, data)?;
-    let orientation = if opts.exif && opts.keep_orientation {
+    let keep = exif::Keep {
+        orientation: opts.keep_orientation,
+        dates: opts.keep_dates,
+        resolution: opts.keep_resolution,
+    };
+    let minimal_exif = if opts.exif {
         p.exif_tiff
             .as_deref()
-            .and_then(exif::orientation)
-            .filter(|&o| o != 1)
+            .and_then(|t| exif::preserved(t, keep))
     } else {
         None
     };
-    let minimal_exif = orientation.map(exif::minimal_with_orientation);
     match format {
         Format::Jpeg => jpeg::clean(data, opts, minimal_exif.as_deref()),
         Format::Png => png::clean(data, opts, minimal_exif.as_deref()),
@@ -297,21 +350,27 @@ pub fn clean_and_verify(data: &[u8], opts: &CleanOptions) -> Result<(Vec<u8>, Cl
     let before = inspect(data)?;
     let out = clean(data, opts)?;
     let after = inspect(&out)?;
+    // When EXIF is removed, only the tags the user chose to keep may remain.
+    let allowed = exif::kept_tags(exif::Keep {
+        orientation: opts.keep_orientation,
+        dates: opts.keep_dates,
+        resolution: opts.keep_resolution,
+    });
     let mut still_present: Vec<Kind> = Vec::new();
     for b in &after.blocks {
-        let minimal_orientation = b.kind == Kind::Exif && opts.keep_orientation;
-        if opts.removes(b.kind) && !minimal_orientation && !still_present.contains(&b.kind) {
+        let preserved_exif = b.kind == Kind::Exif && !allowed.is_empty();
+        if opts.removes(b.kind) && !preserved_exif && !still_present.contains(&b.kind) {
             still_present.push(b.kind);
         }
     }
-    if opts.exif && opts.keep_orientation {
-        if let Some(e) = &after.exif {
-            if e.fields.iter().any(|(k, _)| k != "Orientation")
-                && !still_present.contains(&Kind::Exif)
-            {
-                still_present.push(Kind::Exif);
-            }
-        }
+    if opts.exif
+        && after
+            .details
+            .iter()
+            .any(|f| f.tag.is_some_and(|t| !allowed.contains(&t)))
+        && !still_present.contains(&Kind::Exif)
+    {
+        still_present.push(Kind::Exif);
     }
     let mut notes = Vec::new();
     if before.credentials.present && !opts.c2pa {
@@ -320,16 +379,16 @@ pub fn clean_and_verify(data: &[u8], opts: &CleanOptions) -> Result<(Vec<u8>, Cl
             .iter()
             .any(|b| b.kind != Kind::C2pa && opts.removes(b.kind));
         if other_removed && after.credentials.state == "invalid" {
-            notes.push("Content Credentials were kept, but they no longer match the file because other metadata changed. Viewers will report them as invalid.".into());
+            notes.push(msg("c2pa_broken", "Content Credentials were kept, but they no longer match the file because other metadata changed. Viewers will report them as invalid."));
         }
     }
     if before.credentials.present && opts.c2pa {
-        notes.push("Embedded Content Credentials were removed from this file. Copies elsewhere, cloud records and platform labels are not affected.".into());
+        notes.push(msg("c2pa_removed", "Embedded Content Credentials were removed from this file. Copies elsewhere, cloud records and platform labels are not affected."));
     }
     let image_unchanged = before.image_fingerprint == after.image_fingerprint;
     let mut problems = Vec::new();
     if !image_unchanged {
-        problems.push("The image data changed.".to_string());
+        problems.push(msg("image_changed", "The image data changed."));
     }
     if before.format != after.format
         || before.width != after.width
@@ -337,19 +396,31 @@ pub fn clean_and_verify(data: &[u8], opts: &CleanOptions) -> Result<(Vec<u8>, Cl
         || before.has_alpha != after.has_alpha
         || before.animated != after.animated
     {
-        problems.push("The format, dimensions, transparency or animation changed.".into());
+        problems.push(msg(
+            "structure_changed",
+            "The format, dimensions, transparency or animation changed.",
+        ));
     }
     if !still_present.is_empty() {
-        problems.push("Some selected metadata is still present.".into());
+        problems.push(msg(
+            "still_present",
+            "Some selected metadata is still present.",
+        ));
     }
     if !opts.embedded && before.embedded_fingerprint != after.embedded_fingerprint {
-        problems.push("Embedded motion-photo or extra-image content changed.".into());
+        problems.push(msg(
+            "embedded_changed",
+            "Embedded motion-photo or extra-image content changed.",
+        ));
     }
     if before.has(Kind::Embedded) && !opts.embedded && opts.xmp && before.has(Kind::Xmp) {
-        notes.push("The motion photo or extra images were kept, but XMP was removed. Some viewers use XMP to find them and may now show only the still image.".into());
+        notes.push(msg("motion_xmp_removed", "The motion photo or extra images were kept, but XMP was removed. Some viewers use XMP to find them and may now show only the still image."));
     }
     if before.has(Kind::Embedded) && opts.embedded {
-        notes.push("The embedded motion-photo video or extra images were removed.".into());
+        notes.push(msg(
+            "embedded_removed",
+            "The embedded motion-photo video or extra images were removed.",
+        ));
     }
     let verified = problems.is_empty();
     let bytes_removed = before.size as i64 - after.size as i64;

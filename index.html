@@ -12,13 +12,14 @@
         <img src="/icon.png" alt="" width="32" height="32" />
         <div>
           <h1>Nexonic Clear</h1>
-          <p>Image metadata and Content Credentials, handled on this device.</p>
+          <p data-t="tagline">Image metadata and Content Credentials, handled on this device.</p>
         </div>
       </div>
       <div class="top-actions">
-        <button id="add" class="btn ghost">Add images</button>
-        <button id="add-folder" class="btn ghost">Add folder</button>
-        <button id="clear-list" class="btn ghost" hidden>Clear list</button>
+        <select id="lang" class="lang" aria-label="Language"></select>
+        <button id="add" class="btn ghost" data-t="add">Add images</button>
+        <button id="add-folder" class="btn ghost" data-t="addFolder">Add folder</button>
+        <button id="clear-list" class="btn ghost" hidden data-t="clearList">Clear list</button>
       </div>
     </header>
 
@@ -26,8 +27,8 @@
       <section id="drop" class="drop">
         <div class="drop-inner">
           <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V11m0 0-8 8m8-8 8 8M10 30v5a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-5" /></svg>
-          <h2>Drop JPEG, PNG or WebP images or folders</h2>
-          <p>Or <button id="pick" class="link">choose files</button>. Files are read locally and never uploaded.</p>
+          <h2 data-t="dropTitle">Drop JPEG, PNG or WebP images or folders</h2>
+          <p><span data-t="dropOr">Or</span> <button id="pick" class="link" data-t="dropChoose">choose files</button>. <span data-t="dropLocal">Files are read locally and never uploaded.</span></p>
         </div>
       </section>
 
@@ -37,11 +38,12 @@
         </aside>
         <section id="detail" class="detail"></section>
         <aside class="options">
-          <h3>Remove</h3>
+          <h3 data-t="remove">Remove</h3>
           <div id="toggles"></div>
           <p id="c2pa-warning" class="warn" hidden></p>
           <button id="run" class="btn primary">Clean images</button>
-          <button id="save-all" class="btn" hidden>Save all</button>
+          <button id="save-all" class="btn" hidden data-t="saveAll">Save all</button>
+          <button id="export-all" class="btn" hidden data-t="exportAll">Export report for all</button>
           <p id="status" class="status" role="status"></p>
         </aside>
       </section>

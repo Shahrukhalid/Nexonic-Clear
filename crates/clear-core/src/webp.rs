@@ -1,6 +1,6 @@
 //! WebP: RIFF chunk-level parsing and rewriting. Bitstream chunks are copied as is.
 
-use crate::{le24, le32, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
+use crate::{details, le24, le32, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
 
 const F_ICC: u8 = 0x20;
 const F_ALPHA: u8 = 0x10;
@@ -80,6 +80,7 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
         fingerprint: [0; 32],
         embedded: None,
         warnings: Vec::new(),
+        fields: Vec::new(),
     };
     let mut fp = Digest::new();
     for c in &cs {
@@ -111,6 +112,11 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
         if let Some((kind, label)) = classify(&c.id) {
             if kind == Kind::Exif && p.exif_tiff.is_none() {
                 p.exif_tiff = Some(c.data.strip_prefix(b"Exif\0\0").unwrap_or(c.data).to_vec());
+            }
+            match kind {
+                Kind::Xmp => p.fields.extend(details::xmp(c.data)),
+                Kind::Icc => p.fields.extend(details::icc_header(c.data)),
+                _ => {}
             }
             let label = if kind == Kind::Other {
                 format!("{} chunk", String::from_utf8_lossy(&c.id).trim())

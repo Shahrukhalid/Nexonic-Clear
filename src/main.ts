@@ -2,58 +2,48 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import "./style.css";
 
 type Kind = "exif" | "xmp" | "iptc" | "icc" | "c2pa" | "comment" | "embedded" | "other";
 type Format = "jpeg" | "png" | "webp";
 
 interface Block { kind: Kind; label: string; size: number }
+interface Field { group: string; name: string; value: string; tag?: number }
+interface Message { code: string; text: string }
 interface Credentials {
   present: boolean; state: string; claim_generator: string | null; title: string | null;
   issuer: string | null; signed_at: string | null; algorithm: string | null;
   ai_generated: boolean; actions: string[]; manifests: number; problems: string[];
 }
-interface ExifSummary { fields: [string, string][]; has_gps: boolean; has_thumbnail: boolean; tag_count: number }
 interface Inspection {
   format: Format; width: number; height: number; has_alpha: boolean; animated: boolean; size: number;
-  blocks: Block[]; exif: ExifSummary | null; credentials: Credentials; image_fingerprint: string;
-  embedded_fingerprint: string | null; warnings: string[];
+  blocks: Block[]; credentials: Credentials; image_fingerprint: string;
+  embedded_fingerprint: string | null; warnings: string[]; details: Field[];
 }
 interface CleanReport {
   before: Inspection; after: Inspection; image_unchanged: boolean; still_present: Kind[];
-  bytes_removed: number; verified: boolean; problems: string[]; notes: string[];
+  bytes_removed: number; verified: boolean; problems: Message[]; notes: Message[];
 }
 interface Options {
-  exif: boolean; xmp: boolean; iptc: boolean; icc: boolean; c2pa: boolean;
-  comments: boolean; other: boolean; embedded: boolean; keep_orientation: boolean;
+  exif: boolean; xmp: boolean; iptc: boolean; icc: boolean; c2pa: boolean; comments: boolean;
+  other: boolean; embedded: boolean; keep_orientation: boolean; keep_dates: boolean; keep_resolution: boolean;
 }
+interface AppError { code: string; text: string }
 /** Where an image comes from. Bytes are read only when needed and never kept. */
 type Source = { path: string } | { uri: string } | { file: File };
 interface Item {
   id: number; name: string; source: Source; thumb: string;
-  info?: Inspection; error?: string; report?: CleanReport; outputId?: number;
-  saved?: string;
+  info?: Inspection; error?: AppError; report?: CleanReport; outputId?: number; saved?: string;
 }
 
-const KIND_LABEL: Record<Kind, string> = {
-  exif: "EXIF", xmp: "XMP", iptc: "IPTC", icc: "Colour profile", c2pa: "Content Credentials",
-  comment: "Comments and text", embedded: "Motion photo and extra images", other: "Other data",
-};
+const VERSION = "0.2.0";
 const MIME: Record<Format, string> = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 const EXT: Record<Format, string> = { jpeg: "jpg", png: "png", webp: "webp" };
-const SENSITIVE = new Set(["Location", "Owner", "Camera serial", "Lens serial", "Artist"]);
-
-const TOGGLES: { key: keyof Options; title: string; hint: string }[] = [
-  { key: "exif", title: "EXIF", hint: "Camera, dates, GPS location, serial numbers" },
-  { key: "xmp", title: "XMP", hint: "Editing history, descriptions, AI labels written as XMP" },
-  { key: "iptc", title: "IPTC", hint: "Captions, credits, keywords" },
-  { key: "comments", title: "Comments and text", hint: "Comments and text fields" },
-  { key: "other", title: "Other data", hint: "Maker data, unknown blocks, data after the image" },
-  { key: "embedded", title: "Motion photo and extra images", hint: "Video in motion photos, depth and HDR gain maps" },
-  { key: "icc", title: "Colour profile", hint: "Keep it for accurate colours" },
-  { key: "c2pa", title: "Content Credentials", hint: "Signed C2PA provenance record" },
-  { key: "keep_orientation", title: "Keep orientation", hint: "Rotated photos stay upright" },
-];
+/** Fields that commonly identify a person, device or place. */
+const SENSITIVE = /GPS|Latitude|Longitude|Altitude|serial|owner|Artist|Creator|Copyright|Camera make|Camera model|Host computer|Unique image ID|By-line|City|Country|location/i;
+const REMOVE_KEYS: (keyof Options)[] = ["exif", "xmp", "iptc", "comments", "other", "embedded", "icc", "c2pa"];
+const KEEP_KEYS: (keyof Options)[] = ["keep_orientation", "keep_dates", "keep_resolution"];
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const isAndroid = /Android/i.test(navigator.userAgent);
@@ -61,9 +51,11 @@ const items: Item[] = [];
 let selected = -1;
 let nextId = 1;
 let busy = false;
+let keepFileTime = false;
+let detailFilter = "";
 const options: Options = {
   exif: true, xmp: true, iptc: true, icc: false, c2pa: false, comments: true, other: true, embedded: false,
-  keep_orientation: true,
+  keep_orientation: true, keep_dates: false, keep_resolution: true,
 };
 
 function esc(s: string): string {
@@ -74,9 +66,18 @@ function size(n: number): string {
   if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1048576).toFixed(1)} MB`;
 }
-function sumKind(info: Inspection, kind: Kind): number {
-  return info.blocks.filter((b) => b.kind === kind).reduce((a, b) => a + b.size, 0);
+const kindLabel = (k: Kind) => t(`k.${k}`);
+const sumKind = (info: Inspection, kind: Kind) =>
+  info.blocks.filter((b) => b.kind === kind).reduce((a, b) => a + b.size, 0);
+const msgText = (m: Message) => (t(`m.${m.code}`) === `m.${m.code}` ? m.text : t(`m.${m.code}`));
+
+/** Native errors arrive as "code|message". */
+function toError(e: unknown): AppError {
+  const s = String(e);
+  const bar = s.indexOf("|");
+  return bar > 0 && bar < 20 ? { code: s.slice(0, bar), text: s.slice(bar + 1) } : { code: "io", text: s };
 }
+const errText = (e: AppError) => (t(`err.${e.code}`) === `err.${e.code}` ? e.text : t(`err.${e.code}`));
 
 // ---------- IPC ----------
 // Desktop returns an ArrayBuffer; the Android bridge may return a plain array.
@@ -135,20 +136,26 @@ function baseName(path: string): string {
 async function addSources(sources: { name: string; source: Source }[]) {
   let n = 0;
   for (const f of sources) {
-    status(`Reading ${++n} of ${sources.length}…`);
+    status(t("reading", { i: ++n, n: sources.length }));
     const item: Item = { id: nextId++, name: f.name, source: f.source, thumb: "" };
     try {
       item.info = await inspectSource(f.source);
       item.thumb = await thumbnail(f.source, item.info.format);
       if (!/\.[a-z0-9]{3,4}$/i.test(item.name)) item.name += "." + EXT[item.info.format];
     } catch (e) {
-      item.error = String(e);
+      item.error = toError(e);
     }
     items.push(item);
     if (selected < 0) selected = 0;
     if (n % 10 === 0) render();
   }
-  status(sources.length ? `${sources.length} file${sources.length === 1 ? "" : "s"} added.` : "No supported images found.");
+  const failed = items.filter((i) => !i.info).length;
+  status(
+    !sources.length ? t("noneFound")
+      : failed ? t("errorsN", { n: failed })
+      : sources.length === 1 ? t("added1") : t("added", { n: sources.length }),
+    failed > 0,
+  );
   render();
 }
 
@@ -160,25 +167,22 @@ async function addPaths(paths: string[]) {
 
 async function pickFiles() {
   try {
-    const picked = await open({
-      multiple: true,
-      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }],
-    });
+    const picked = await open({ multiple: true, filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }] });
     if (!picked) return;
     const paths = Array.isArray(picked) ? picked : [picked];
     if (isAndroid) await addSources(paths.map((p) => ({ name: baseName(p), source: { uri: p } })));
     else await addPaths(paths);
   } catch (e) {
-    status(`Could not open the files: ${e}`, true);
+    status(t("couldNotOpen", { e: errText(toError(e)) }), true);
   }
 }
 
 async function pickFolder() {
   try {
-    const dir = await open({ directory: true, title: "Choose a folder of images" });
+    const dir = await open({ directory: true });
     if (dir && !Array.isArray(dir)) await addPaths([dir]);
   } catch (e) {
-    status(`Could not open the folder: ${e}`, true);
+    status(t("couldNotOpen", { e: errText(toError(e)) }), true);
   }
 }
 
@@ -201,7 +205,7 @@ async function runClean() {
   const old = todo.map((i) => i.outputId).filter((x): x is number => x !== undefined);
   if (old.length) await api.discard(old);
   for (const item of todo) {
-    status(`Cleaning ${++done} of ${todo.length}…`);
+    status(t("cleaning", { i: ++done, n: todo.length }));
     item.report = undefined;
     item.outputId = undefined;
     item.saved = undefined;
@@ -211,13 +215,13 @@ async function runClean() {
       item.outputId = r.id;
       item.report = r.report;
     } catch (e) {
-      item.error = String(e);
+      item.error = toError(e);
     }
     if (done % 10 === 0) render();
   }
   busy = false;
   const failed = todo.filter((i) => !i.report?.verified).length;
-  status(failed ? `${todo.length - failed} cleaned and verified, ${failed} could not be verified and will not be saved.` : `${todo.length} cleaned and verified. Save to keep the results.`, failed > 0);
+  status(failed ? t("cleanedSome", { ok: todo.length - failed, bad: failed }) : t("cleanedAll", { n: todo.length }), failed > 0);
   render();
 }
 
@@ -237,13 +241,13 @@ async function saveOne(item: Item) {
       await writeFile(path, await api.output(item.outputId!));
       item.saved = baseName(path);
     } else {
-      const name = await invoke<string | null>("save_one", { id: item.outputId, name: outName(item) });
+      const name = await invoke<string | null>("save_one", { id: item.outputId, name: outName(item), keepTime: keepFileTime });
       if (!name) return;
       item.saved = name;
     }
-    status(`Saved ${item.saved}.`);
+    status(t("saved", { name: item.saved }));
   } catch (e) {
-    status(`Could not save: ${e}`, true);
+    status(t("couldNotSave", { e: errText(toError(e)) }), true);
   }
   render();
 }
@@ -258,6 +262,7 @@ async function saveAll() {
   try {
     const result = await invoke<[string, { id: number; name: string }[]] | null>("save_all", {
       items: ready.map((i) => [i.outputId, outName(i)]),
+      keepTime: keepFileTime,
     });
     if (!result) return;
     const [dir, saved] = result;
@@ -265,11 +270,59 @@ async function saveAll() {
       const item = items.find((i) => i.outputId === s.id);
       if (item) item.saved = s.name;
     }
-    status(`Saved ${saved.length} image${saved.length === 1 ? "" : "s"} to ${dir}.${skipped ? ` ${skipped} unverified result${skipped === 1 ? " was" : "s were"} not saved.` : ""}`);
+    status(t("savedTo", { n: saved.length, dir }) + (skipped ? " " + t("skipped", { n: skipped }) : ""));
   } catch (e) {
-    status(`Could not save: ${e}`, true);
+    status(t("couldNotSave", { e: errText(toError(e)) }), true);
   }
   render();
+}
+
+// ---------- JSON reports ----------
+function reportFor(list: Item[]) {
+  return {
+    generator: "Nexonic Clear",
+    version: VERSION,
+    generated_at: new Date().toISOString(),
+    options,
+    note: "Lists the metadata found before cleaning. Treat this report as private if the images were.",
+    files: list.map((i) => ({
+      name: i.name,
+      status: i.error ? "error" : i.report ? (i.report.verified ? "verified" : "not_verified") : "inspected",
+      error: i.error ?? null,
+      saved_as: i.saved ?? null,
+      format: i.info?.format ?? null,
+      width: i.info?.width ?? null,
+      height: i.info?.height ?? null,
+      image_sha256: i.info?.image_fingerprint ?? null,
+      size_before: i.info?.size ?? null,
+      size_after: i.report?.after.size ?? null,
+      problems: i.report?.problems ?? [],
+      notes: i.report?.notes ?? [],
+      before: i.info ? { blocks: i.info.blocks, details: i.info.details, credentials: i.info.credentials } : null,
+      after: i.report ? { blocks: i.report.after.blocks, details: i.report.after.details, credentials: i.report.after.credentials } : null,
+    })),
+  };
+}
+
+async function exportReport(list: Item[]) {
+  if (!list.length) return;
+  const json = JSON.stringify(reportFor(list), null, 2);
+  const name = list.length === 1 ? `${list[0].name.replace(/\.[^.]+$/, "")}-report.json` : "nexonic-clear-report.json";
+  try {
+    let savedName: string | null = null;
+    if (isAndroid) {
+      const path = await save({ defaultPath: name, filters: [{ name: "JSON", extensions: ["json"] }] });
+      if (path) {
+        await writeFile(path, new TextEncoder().encode(json));
+        savedName = baseName(path);
+      }
+    } else {
+      savedName = await invoke<string | null>("save_report", { json, name });
+    }
+    if (savedName) status(t("reportSaved", { name: savedName }));
+  } catch (e) {
+    status(t("couldNotSave", { e: errText(toError(e)) }), true);
+  }
 }
 
 // ---------- Rendering ----------
@@ -280,35 +333,31 @@ function status(text: string, error = false) {
 }
 
 function credentialsCard(c: Credentials): string {
-  if (!c.present) return `<div class="card muted"><h4>Content Credentials</h4><p>None embedded in this file.</p></div>`;
-  const badge: Record<string, [string, string, string]> = {
-    trusted: ["ok", "Trusted signature", "The signature is intact and the signer is on a trust list."],
-    valid: ["ok", "Signature intact", "The credentials match this file. The signer is not checked against a trust list, so their identity is not confirmed."],
-    invalid: ["bad", "Validation failed", "The credentials do not match this file or the signature is broken. Do not rely on them."],
-    unreadable: ["bad", "Could not be read", "The credentials are present but damaged or unsupported."],
-  };
-  const [tone, title, text] = badge[c.state] ?? badge.unreadable;
+  if (!c.present) return `<div class="card muted"><h4>${t("credTitle")}</h4><p>${t("credNone")}</p></div>`;
+  const state = ["trusted", "valid", "invalid", "unreadable"].includes(c.state) ? c.state : "unreadable";
+  const tone = state === "trusted" || state === "valid" ? "ok" : "bad";
   const rows: [string, string | null][] = [
-    ["Signed by", c.issuer], ["Signed at", c.signed_at], ["Made with", c.claim_generator],
-    ["Title", c.title], ["Actions", c.actions.join(", ") || null], ["Algorithm", c.algorithm],
-    ["Manifests", String(c.manifests)],
+    [t("signedBy"), c.issuer], [t("signedAt"), c.signed_at], [t("madeWith"), c.claim_generator],
+    [t("title"), c.title], [t("actions"), c.actions.join(", ") || null], [t("algorithm"), c.algorithm],
+    [t("manifests"), String(c.manifests)],
   ];
   return `<div class="card">
-    <h4>Content Credentials <span class="badge ${tone}">${title}</span></h4>
-    <p class="small">${text}</p>
-    ${c.ai_generated ? `<p class="flag">These credentials declare AI-generated content.</p>` : ""}
+    <h4>${t("credTitle")} <span class="badge ${tone}">${t(`cred.${state}`)}</span></h4>
+    <p class="small">${t(`credx.${state}`)}</p>
+    ${c.ai_generated ? `<p class="flag">${t("credAi")}</p>` : ""}
     <dl>${rows.filter((r) => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v!)}</dd>`).join("")}</dl>
-    ${c.problems.length ? `<details><summary>${c.problems.length} validation message${c.problems.length > 1 ? "s" : ""}</summary><ul class="small">${c.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></details>` : ""}
+    ${c.problems.length ? `<details><summary>${t("credMessages", { n: c.problems.length })}</summary><ul class="small">${c.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></details>` : ""}
   </div>`;
 }
 
 function credAfter(r: CleanReport): string {
   const b = r.before.credentials, a = r.after.credentials;
+  const good = (s: string) => s === "valid" || s === "trusted";
   if (!b.present) return "";
-  if (!a.present) return `<li class="yes">Content Credentials removed from this file</li>`;
-  if (a.state === "valid" || a.state === "trusted") return `<li class="yes">Content Credentials kept and still pass validation</li>`;
-  if (b.state === "valid" || b.state === "trusted") return `<li class="no">Content Credentials kept but now fail validation</li>`;
-  return `<li class="no">Content Credentials kept; they did not pass validation before cleaning either</li>`;
+  if (!a.present) return `<li class="yes">${t("credRemoved")}</li>`;
+  if (good(a.state)) return `<li class="yes">${t("credValid")}</li>`;
+  if (good(b.state)) return `<li class="no">${t("credBroken")}</li>`;
+  return `<li class="no">${t("credWasInvalid")}</li>`;
 }
 
 function labels(blocks: Block[]): string {
@@ -323,62 +372,117 @@ function reportCard(r: CleanReport): string {
   const kept = [...new Set(r.after.blocks.map((b) => b.kind))];
   const credBroken = r.after.credentials.present && !["valid", "trusted"].includes(r.after.credentials.state) &&
     ["valid", "trusted"].includes(r.before.credentials.state);
-  const ok = r.verified && !credBroken;
-  return `<div class="card report ${ok ? "good" : "attention"}">
-    <h4>${r.verified ? "Verified after cleaning" : "Verification failed"}</h4>
-    ${r.problems.map((p) => `<p class="note bad-note">${esc(p)}</p>`).join("")}
+  const extras = [r.after.has_alpha ? t("transparencyKept") : "", r.after.animated ? t("animationKept") : ""].filter(Boolean);
+  return `<div class="card report ${r.verified && !credBroken ? "good" : "attention"}">
+    <h4>${r.verified ? t("verifiedAfter") : t("verificationFailed")}</h4>
+    ${r.problems.map((p) => `<p class="note bad-note">${esc(msgText(p))}</p>`).join("")}
     <ul class="checks">
-      <li class="${r.image_unchanged ? "yes" : "no"}">${r.image_unchanged ? "Image data identical to the original" : "Image data differs from the original"}</li>
-      <li class="${r.still_present.length ? "no" : "yes"}">${r.still_present.length ? `Still present: ${r.still_present.map((k) => KIND_LABEL[k]).join(", ")}` : "Everything selected was removed"}</li>
+      <li class="${r.image_unchanged ? "yes" : "no"}">${r.image_unchanged ? t("imageIdentical") : t("imageDiffers")}</li>
+      <li class="${r.still_present.length ? "no" : "yes"}">${r.still_present.length ? t("stillPresent", { list: r.still_present.map(kindLabel).join(", ") }) : t("allRemoved")}</li>
       ${credAfter(r)}
-      <li class="yes">${r.after.width} × ${r.after.height}${r.after.has_alpha ? ", transparency kept" : ""}${r.after.animated ? ", animation kept" : ""}</li>
+      <li class="yes">${r.after.width} × ${r.after.height}${extras.length ? ", " + extras.join(", ") : ""}</li>
     </ul>
-    <p class="small">Removed: ${removed.map((k) => `${KIND_LABEL[k]} (${size(sumKind(r.before, k))})`).join(", ") || "nothing selected was present"}.
-    Kept: ${kept.map((k) => KIND_LABEL[k]).join(", ") || "no metadata"}. ${r.bytes_removed > 0 ? `${size(r.bytes_removed)} smaller.` : ""}</p>
-    ${r.after.exif && r.after.exif.fields.length ? `<p class="small">EXIF kept: ${r.after.exif.fields.map(([k, v]) => `${esc(k)} ${esc(v)}`).join(", ")}</p>` : ""}
-    ${r.notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
+    <p class="small">${t("removedList", { list: removed.map((k) => `${kindLabel(k)} (${size(sumKind(r.before, k))})`).join(", ") || t("nothingRemoved") })}
+    ${t("keptList", { list: kept.map(kindLabel).join(", ") || t("noMeta") })} ${r.bytes_removed > 0 ? t("smaller", { size: size(r.bytes_removed) }) : ""}</p>
+    ${r.notes.map((n) => `<p class="note">${esc(msgText(n))}</p>`).join("")}
   </div>`;
+}
+
+const fieldKey = (f: Field) => `${f.group}\u0000${f.name}`;
+
+/** Field-by-field comparison: what was there before and what is left after. */
+function compareCard(r: CleanReport): string {
+  const after = new Map(r.after.details.map((f) => [fieldKey(f), f.value]));
+  const rows = r.before.details;
+  if (!rows.length) return "";
+  const keptN = rows.filter((f) => after.has(fieldKey(f))).length;
+  const shown = rows.slice(0, 300);
+  return `<details class="card compare">
+    <summary><h4>${t("compare")} <span class="small">${t("compareSummary", { removed: rows.length - keptN, kept: keptN })}</span></h4></summary>
+    <table><thead><tr><th>${t("field")}</th><th>${t("before")}</th><th>${t("after")}</th></tr></thead><tbody>
+    ${shown.map((f) => {
+      const a = after.get(fieldKey(f));
+      return `<tr class="${a === undefined ? "gone" : "kept"}"><td><span class="grp">${esc(f.group)}</span> ${esc(f.name)}</td><td>${esc(f.value)}</td><td>${a === undefined ? `<em>${t("removedTag")}</em>` : esc(a)}</td></tr>`;
+    }).join("")}
+    </tbody></table></details>`;
+}
+
+/** Every readable field, grouped, with a filter. */
+function detailsCard(i: Inspection): string {
+  if (!i.details.length) return `<div class="card muted"><h4>${t("details")}</h4><p>${t("noFields")}</p></div>`;
+  const q = detailFilter.toLowerCase();
+  const list = q ? i.details.filter((f) => `${f.group} ${f.name} ${f.value}`.toLowerCase().includes(q)) : i.details;
+  const groups = [...new Set(list.map((f) => f.group))];
+  return `<div class="card details-card">
+    <h4>${t("details")} <span class="small">${t("fieldsN", { n: i.details.length })}</span></h4>
+    <input id="detail-filter" class="filter" type="search" placeholder="${t("filter")}" value="${esc(detailFilter)}" />
+    ${groups.map((g) => {
+      const fs = list.filter((f) => f.group === g);
+      return `<details ${q || groups.length <= 2 ? "open" : ""}><summary>${esc(g)} <span class="small">${fs.length}</span></summary>
+        <dl>${fs.map((f) => `<dt>${esc(f.name)}</dt><dd class="${SENSITIVE.test(f.name) || f.group === "GPS" ? "sensitive" : ""}">${esc(f.value)}</dd>`).join("")}</dl></details>`;
+    }).join("")}
+  </div>`;
+}
+
+function errorCard(item: Item): string {
+  const e = item.error!;
+  return `<div class="card bad-card"><h4>${esc(item.name)}</h4><p>${esc(errText(e))}</p>
+    <details><summary>${t("errDetail")}</summary><p class="small mono">${esc(e.code)}: ${esc(e.text)}</p></details></div>`;
 }
 
 function renderDetail() {
   const el = $("detail");
   const item = items[selected];
   if (!item) { el.innerHTML = ""; return; }
-  if (!item.info) {
-    el.innerHTML = `<div class="card bad-card"><h4>${esc(item.name)}</h4><p>${esc(item.error ?? "Unknown error")}</p></div>`;
-    return;
-  }
+  if (!item.info) { el.innerHTML = errorCard(item); return; }
   const i = item.info;
   const groups = [...new Set(i.blocks.map((b) => b.kind))];
-  const after = item.report?.after;
+  const r = item.report;
+  const showAfter = r?.verified;
+  const preview = item.thumb ? `<img src="${item.thumb}" alt="" />` : `<div class="noprev">${t("noPreview")}</div>`;
   el.innerHTML = `
-    <div class="preview ${after && item.report?.verified ? "split" : ""}">
-      <figure>${item.thumb ? `<img src="${item.thumb}" alt="Original" />` : `<div class="noprev">No preview</div>`}<figcaption>Original · ${size(i.size)}</figcaption></figure>
-      ${after && item.report?.verified ? `<figure class="appear">${item.thumb ? `<img src="${item.thumb}" alt="Cleaned, identical pixels" />` : `<div class="noprev">No preview</div>`}<figcaption>Cleaned · ${size(after.size)} · identical pixels</figcaption></figure>` : ""}
+    <div class="preview ${showAfter ? "split" : ""}">
+      <figure>${preview}<figcaption>${t("original")} · ${size(i.size)}</figcaption></figure>
+      ${showAfter ? `<figure class="appear">${preview}<figcaption>${t("cleaned")} · ${size(r!.after.size)} · ${t("identicalPixels")}</figcaption></figure>` : ""}
     </div>
     ${i.warnings.map((w) => `<p class="note">${esc(w)}</p>`).join("")}
-    <div class="meta-line">${i.format.toUpperCase()} · ${i.width} × ${i.height}${i.has_alpha ? " · transparency" : ""}${i.animated ? " · animated" : ""}</div>
-    ${item.report ? reportCard(item.report) : ""}
-    <div class="card">
-      <h4>Found in this file</h4>
-      ${groups.length ? `<ul class="blocks">${groups.map((k) => `<li><span class="kind k-${k}">${KIND_LABEL[k]}</span><span>${labels(i.blocks.filter((b) => b.kind === k))}</span><span class="sz">${size(sumKind(i, k))}</span></li>`).join("")}</ul>` : "<p>No metadata found.</p>"}
+    <div class="meta-line">${i.format.toUpperCase()} · ${i.width} × ${i.height}${i.has_alpha ? " · alpha" : ""}${i.animated ? " · ▶" : ""}</div>
+    ${item.error ? errorCard(item) : ""}
+    ${r ? reportCard(r) : ""}
+    <div class="actions">
+      ${savable(item) ? `<button class="btn primary" id="save-one">${item.saved ? t("saveAgain", { name: esc(item.saved) }) : t("saveOne")}</button>` : ""}
+      <button class="btn" id="export-one">${t("exportReport")}</button>
     </div>
-    ${i.exif && i.exif.fields.length ? `<div class="card"><h4>EXIF details <span class="small">${i.exif.tag_count} tags${i.exif.has_thumbnail ? ", embedded thumbnail" : ""}</span></h4><dl>${i.exif.fields.map(([k, v]) => `<dt>${esc(k)}</dt><dd class="${SENSITIVE.has(k) ? "sensitive" : ""}">${esc(v)}</dd>`).join("")}</dl></div>` : ""}
+    ${r && !r.verified ? `<p class="note bad-note">${t("notSaved")}</p>` : ""}
+    ${r ? compareCard(r) : ""}
+    <div class="card">
+      <h4>${t("found")}</h4>
+      ${groups.length ? `<ul class="blocks">${groups.map((k) => `<li><span class="kind k-${k}">${kindLabel(k)}</span><span>${labels(i.blocks.filter((b) => b.kind === k))}</span><span class="sz">${size(sumKind(i, k))}</span></li>`).join("")}</ul>` : `<p>${t("noMetadata")}</p>`}
+    </div>
+    ${detailsCard(i)}
     ${credentialsCard(i.credentials)}
-    ${savable(item) ? `<button class="btn primary" id="save-one">${item.saved ? `Saved as ${esc(item.saved)} · Save again` : "Save cleaned image"}</button>` : ""}
-    ${item.report && !item.report.verified ? `<p class="note bad-note">This result did not pass verification, so it cannot be saved. The original file is unchanged.</p>` : ""}
   `;
   el.querySelector("#save-one")?.addEventListener("click", () => saveOne(item));
+  el.querySelector("#export-one")?.addEventListener("click", () => exportReport([item]));
+  const filter = el.querySelector<HTMLInputElement>("#detail-filter");
+  filter?.addEventListener("input", () => {
+    detailFilter = filter.value;
+    const pos = filter.selectionStart;
+    renderDetail();
+    const again = $("detail").querySelector<HTMLInputElement>("#detail-filter");
+    again?.focus();
+    if (pos !== null) again?.setSelectionRange(pos, pos);
+  });
 }
 
 function renderList() {
   const ul = $("file-list");
   ul.innerHTML = items.map((it, idx) => {
     const r = it.report;
-    const tag = it.error && !it.info ? `<span class="chip bad">Unsupported</span>`
-      : it.error && !r ? `<span class="chip bad">Failed</span>`
-      : r ? (r.verified ? `<span class="chip ok">${it.saved ? "Saved" : "Verified"}</span>` : `<span class="chip bad">Not verified</span>`)
-      : `<span class="chip">${it.info!.blocks.length} found</span>`;
+    const tag = it.error && !it.info ? `<span class="chip bad">${it.error.code === "unsupported" ? t("chipUnsupported") : t("chipFailed")}</span>`
+      : it.error && !r ? `<span class="chip bad">${t("chipFailed")}</span>`
+      : r ? (r.verified ? `<span class="chip ok">${it.saved ? t("chipSaved") : t("chipVerified")}</span>` : `<span class="chip bad">${t("chipNotVerified")}</span>`)
+      : `<span class="chip">${t("chipFound", { n: it.info!.blocks.length })}</span>`;
     return `<li data-i="${idx}" class="${idx === selected ? "sel" : ""}">
       ${it.thumb ? `<img src="${it.thumb}" alt="" />` : `<div class="noimg"></div>`}
       <div><b>${esc(it.name)}</b><small>${it.info ? size(it.info.size) : ""}</small></div>${tag}</li>`;
@@ -386,19 +490,27 @@ function renderList() {
   ul.querySelectorAll("li").forEach((li) => li.addEventListener("click", () => { selected = Number(li.dataset.i); render(); }));
 }
 
+function toggleHtml(key: string, checked: boolean, sep = false) {
+  return `<label class="toggle ${sep ? "sep" : ""}">
+    <input type="checkbox" data-k="${key}" ${checked ? "checked" : ""} /><span class="sw"></span>
+    <span><b>${t(`t.${key}`)}</b><small>${t(`h.${key}`)}</small></span></label>`;
+}
+
 function renderOptions() {
   const box = $("toggles");
-  if (!box.childElementCount) {
-    box.innerHTML = TOGGLES.map((t) => `<label class="toggle ${t.key === "keep_orientation" ? "sep" : ""}">
-      <input type="checkbox" data-k="${t.key}" ${options[t.key] ? "checked" : ""} /><span class="sw"></span>
-      <span><b>${t.title}</b><small>${t.hint}</small></span></label>`).join("");
+  if (box.dataset.lang !== lang()) {
+    box.dataset.lang = lang();
+    box.innerHTML = REMOVE_KEYS.map((k) => toggleHtml(k, options[k])).join("") +
+      `<h3 class="keep-h">${t("keep")}</h3>` +
+      KEEP_KEYS.map((k) => toggleHtml(k, options[k])).join("") +
+      (isAndroid ? "" : toggleHtml("keep_time", keepFileTime));
     box.querySelectorAll("input").forEach((inp) => inp.addEventListener("change", () => {
-      options[inp.dataset.k as keyof Options] = inp.checked;
+      if (inp.dataset.k === "keep_time") keepFileTime = inp.checked;
+      else options[inp.dataset.k as keyof Options] = inp.checked;
       render();
     }));
   }
-  const exifOff = box.querySelector<HTMLInputElement>('input[data-k="keep_orientation"]')!;
-  exifOff.disabled = !options.exif;
+  for (const k of KEEP_KEYS) box.querySelector<HTMLInputElement>(`input[data-k="${k}"]`)!.disabled = !options.exif;
   const removes: Record<Kind, boolean> = {
     exif: options.exif, xmp: options.xmp, iptc: options.iptc, icc: options.icc, c2pa: options.c2pa,
     comment: options.comments, embedded: options.embedded, other: options.other,
@@ -406,12 +518,17 @@ function renderOptions() {
   const breaks = items.some((i) => i.info?.credentials.present && i.info.blocks.some((b) => b.kind !== "c2pa" && removes[b.kind]));
   const warn = $("c2pa-warning");
   warn.hidden = !(breaks && !options.c2pa);
-  warn.textContent = "Content Credentials cover the whole file. Removing any other metadata while keeping them makes them fail validation. To keep them valid, turn off every other option.";
+  warn.textContent = t("c2paWarning");
   const run = $<HTMLButtonElement>("run");
   const n = items.filter((i) => i.info).length;
   run.disabled = busy || n === 0;
-  run.textContent = busy ? "Working…" : `Clean ${n} image${n === 1 ? "" : "s"}`;
+  run.textContent = busy ? t("working") : n === 1 ? t("clean1") : t("cleanN", { n });
   $("save-all").hidden = !items.some(savable) || busy;
+  $("export-all").hidden = items.length < 2 || busy;
+}
+
+function applyStatic() {
+  document.querySelectorAll<HTMLElement>("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t!); });
 }
 
 function render() {
@@ -433,7 +550,7 @@ async function selftest() {
     const bytes = sample;
     const before = await api.inspect(bytes);
     if (!before.credentials.present || before.credentials.state !== "valid") return fail(`credentials: ${JSON.stringify(before.credentials)}`);
-    const all = { exif: true, xmp: true, iptc: true, icc: true, c2pa: true, comments: true, other: true, embedded: true, keep_orientation: false };
+    const all: Options = { exif: true, xmp: true, iptc: true, icc: true, c2pa: true, comments: true, other: true, embedded: true, keep_orientation: false, keep_dates: false, keep_resolution: false };
     const r = await api.clean(bytes, all);
     const out = await api.output(r.id);
     const after = await api.inspect(out);
@@ -447,7 +564,7 @@ async function selftest() {
         viaPath.report.after.blocks.length === 0;
     }
     const ok = pathOk && r.report.verified && r.report.image_unchanged && after.blocks.length === 0 && !after.credentials.present &&
-      after.image_fingerprint === before.image_fingerprint && out.length < bytes.length;
+      after.details.length === 0 && after.image_fingerprint === before.image_fingerprint && out.length < bytes.length;
     await addSources([{ name: "selftest.jpg", source: { file: new File([bytes as BlobPart], "selftest.jpg") } }]);
     await invoke("selftest_done", { passed: ok, detail: `before ${before.blocks.length} blocks, after ${after.blocks.length}; ${bytes.length} -> ${out.length} bytes; path flow ${samplePath ? (pathOk ? "ok" : "failed") : "n/a"}` });
   } catch (e) {
@@ -456,6 +573,9 @@ async function selftest() {
 }
 
 // ---------- Wiring ----------
+const langSel = $<HTMLSelectElement>("lang");
+langSel.innerHTML = LANGS.map(([code, name]) => `<option value="${code}" ${code === lang() ? "selected" : ""}>${name}</option>`).join("");
+langSel.addEventListener("change", () => { setLang(langSel.value as Lang); applyStatic(); render(); });
 $("add").addEventListener("click", pickFiles);
 const folderBtn = $("add-folder");
 folderBtn.hidden = isAndroid;
@@ -464,6 +584,7 @@ $("pick").addEventListener("click", pickFiles);
 $("drop").addEventListener("click", (e) => { if ((e.target as HTMLElement).id !== "pick" && !items.length) pickFiles(); });
 $("run").addEventListener("click", runClean);
 $("save-all").addEventListener("click", saveAll);
+$("export-all").addEventListener("click", () => exportReport(items));
 $("clear-list").addEventListener("click", async () => {
   const ids = items.map((i) => i.outputId).filter((x): x is number => x !== undefined);
   if (ids.length) await api.discard(ids);
@@ -490,5 +611,6 @@ if (!isAndroid) {
 window.addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging"); });
 window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) document.body.classList.remove("dragging"); });
 window.addEventListener("drop", onDrop);
+applyStatic();
 render();
 selftest();

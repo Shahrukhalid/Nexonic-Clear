@@ -58,6 +58,8 @@ fn all() -> CleanOptions {
         other: true,
         embedded: true,
         keep_orientation: false,
+        keep_dates: false,
+        keep_resolution: false,
     }
 }
 
@@ -153,6 +155,8 @@ fn keeping_c2pa_while_editing_other_metadata_is_reported_honestly() {
         other: false,
         embedded: false,
         keep_orientation: false,
+        keep_dates: false,
+        keep_resolution: false,
     };
     let (_, r) = clean_and_verify(&signed, &none).unwrap();
     assert_eq!(r.after.credentials.state, "valid");
@@ -288,6 +292,8 @@ fn gps_shown_and_orientation_kept() {
         &d,
         &CleanOptions {
             keep_orientation: false,
+            keep_dates: false,
+            keep_resolution: false,
             ..CleanOptions::default()
         },
     )
