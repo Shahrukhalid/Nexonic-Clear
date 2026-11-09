@@ -12,9 +12,10 @@ c2pa = ["dep:c2pa"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
-c2pa = { version = "0.91", default-features = false, features = ["rust_native_crypto"], optional = true }
+lopdf = { version = "0.45", default-features = false }
+c2pa = { version = "0.91", default-features = false, features = ["rust_native_crypto", "pdf"], optional = true }
 
 [dev-dependencies]
 serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
-c2pa = { version = "0.91", default-features = false, features = ["rust_native_crypto"] }
+c2pa = { version = "0.91", default-features = false, features = ["rust_native_crypto", "pdf"] }

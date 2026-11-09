@@ -1,6 +1,6 @@
 <p align="center"><img src="src-tauri/icons/128x128.png" width="96" alt="Nexonic Clear" /></p>
 <h1 align="center">Nexonic Clear</h1>
-<p align="center">Inspect and remove image metadata and Content Credentials. Offline, lossless, open source.</p>
+<p align="center">Inspect and remove metadata and Content Credentials from photos, audio, video and PDFs. Offline, lossless, open source.</p>
 
 <p align="center"><img src="docs/screenshot.png" width="860" alt="Nexonic Clear showing a cleaned photo and its verification report" /></p>
 
@@ -24,7 +24,14 @@
 - **Safe saving.** Only results that pass verification can be saved. Desktop saves are atomic, so a file is never left half-written, and originals are never overwritten.
 - **Private by design.** No network access, accounts, telemetry or ads. Files never leave your device.
 
-Supported formats: JPEG, PNG and WebP (including animated PNG and WebP).
+Supported formats:
+
+- **Images:** JPEG, PNG, WebP (including animated PNG and WebP), HEIC and AVIF.
+- **Audio:** WAV (including RF64 and Broadcast WAV), MP3 and M4A.
+- **Video:** MP4 and MOV.
+- **Documents:** PDF.
+
+Audio and video are cleaned without re-encoding: tags, QuickTime location, make and model, XMP, cover art and Content Credentials are removed while every audio and video sample is copied byte for byte, and chunk offsets are rewritten and verified. On desktop, audio and video up to 64 GB are processed from disk. PDFs are rewritten as a complete new file, so removed document information, XMP and attachments do not survive in older revisions; encrypted PDFs are not supported.
 
 ## Download
 

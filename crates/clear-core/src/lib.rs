@@ -1,5 +1,6 @@
-//! Nexonic Clear core: inspect and selectively remove image metadata and
-//! embedded Content Credentials (C2PA) without re-encoding the image.
+//! Nexonic Clear core: inspect and selectively remove metadata and embedded
+//! Content Credentials (C2PA) from images, audio, video and PDF documents
+//! without re-encoding anything.
 //!
 //! Every format is handled at the container level: metadata segments/chunks
 //! are dropped or kept, and the compressed image data is copied byte for byte.
@@ -7,13 +8,20 @@
 //! can prove that cleaning did not touch the picture. Embedded motion-photo
 //! videos and extra images are tracked separately and kept unless removed.
 
+mod bmff;
 #[cfg(feature = "c2pa")]
 pub mod credentials;
 mod details;
 mod exif;
 mod jpeg;
+mod mp3;
+mod pdf;
 mod png;
+mod stream;
+mod wav;
 mod webp;
+
+use stream::{FileSrc, Mem, Src};
 
 use serde::{Deserialize, Serialize};
 
@@ -33,8 +41,12 @@ fn msg(code: &str, text: &str) -> Message {
     }
 }
 
-/// Largest file accepted, to bound memory use on phones.
+/// Largest file loaded into memory, to bound memory use on phones.
 pub const MAX_FILE_SIZE: usize = 256 * 1024 * 1024;
+
+/// Largest audio or video file processed from disk by streaming
+/// ([`inspect_path`], [`clean_path`]).
+pub const MAX_STREAM_SIZE: u64 = 64 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -42,6 +54,14 @@ pub enum Format {
     Jpeg,
     Png,
     Webp,
+    Heif,
+    Avif,
+    Wav,
+    Mp3,
+    Mp4,
+    Mov,
+    M4a,
+    Pdf,
 }
 
 impl Format {
@@ -52,17 +72,94 @@ impl Format {
             Some(Format::Png)
         } else if data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" {
             Some(Format::Webp)
+        } else if data.len() >= 12
+            && matches!(&data[0..4], b"RIFF" | b"RF64" | b"BW64")
+            && &data[8..12] == b"WAVE"
+        {
+            Some(Format::Wav)
+        } else if data.len() >= 12 && &data[4..8] == b"ftyp" {
+            Self::brand(data)
+        } else if data.starts_with(b"%PDF-") {
+            Some(Format::Pdf)
+        } else if data.starts_with(b"ID3")
+            || (data.len() >= 4 && data[0] == 0xFF && data[1] & 0xE0 == 0xE0 && data[1] & 0x06 != 0)
+        {
+            Some(Format::Mp3)
         } else {
             None
         }
+    }
+    fn brand(data: &[u8]) -> Option<Self> {
+        let size = (be32(data, 0)? as usize).clamp(8, data.len().min(4096));
+        let major = &data[8..12];
+        let compat: Vec<&[u8]> = data
+            .get(16..size)
+            .unwrap_or_default()
+            .chunks_exact(4)
+            .collect();
+        let has = |b: &[u8]| major == b || compat.contains(&b);
+        Some(match major {
+            b"avif" | b"avis" => Format::Avif,
+            b"heic" | b"heix" | b"heim" | b"heis" | b"hevc" | b"hevx" => Format::Heif,
+            b"mif1" | b"msf1" if has(b"avif") || has(b"avis") => Format::Avif,
+            b"mif1" | b"msf1" => Format::Heif,
+            b"qt  " => Format::Mov,
+            b"M4A " | b"M4B " | b"M4P " => Format::M4a,
+            _ => Format::Mp4,
+        })
     }
     pub fn mime(self) -> &'static str {
         match self {
             Format::Jpeg => "image/jpeg",
             Format::Png => "image/png",
             Format::Webp => "image/webp",
+            Format::Heif => "image/heic",
+            Format::Avif => "image/avif",
+            Format::Wav => "audio/wav",
+            Format::Mp3 => "audio/mpeg",
+            Format::Mp4 => "video/mp4",
+            Format::Mov => "video/quicktime",
+            Format::M4a => "audio/mp4",
+            Format::Pdf => "application/pdf",
         }
     }
+    /// The usual file extension, without a dot.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Format::Jpeg => "jpg",
+            Format::Png => "png",
+            Format::Webp => "webp",
+            Format::Heif => "heic",
+            Format::Avif => "avif",
+            Format::Wav => "wav",
+            Format::Mp3 => "mp3",
+            Format::Mp4 => "mp4",
+            Format::Mov => "mov",
+            Format::M4a => "m4a",
+            Format::Pdf => "pdf",
+        }
+    }
+    /// "image", "audio", "video" or "document".
+    pub fn media(self) -> &'static str {
+        match self {
+            Format::Jpeg | Format::Png | Format::Webp | Format::Heif | Format::Avif => "image",
+            Format::Wav | Format::Mp3 | Format::M4a => "audio",
+            Format::Mp4 | Format::Mov => "video",
+            Format::Pdf => "document",
+        }
+    }
+    /// Formats that can be processed from disk without loading them whole.
+    pub fn streams(self) -> bool {
+        matches!(
+            self,
+            Format::Wav | Format::Mp3 | Format::Mp4 | Format::Mov | Format::M4a
+        )
+    }
+    /// File extensions (lower case, without a dot) that may hold a supported file.
+    pub const EXTENSIONS: &'static [&'static str] = &[
+        "jpg", "jpeg", "png", "webp", "heic", "heif", "avif", "wav", "mp3", "mp4", "m4v", "mov",
+        "m4a", "pdf",
+    ];
 }
 
 /// Kinds of metadata a user can keep or remove.
@@ -275,10 +372,10 @@ impl std::fmt::Display for Error {
         match self {
             Error::Unsupported => write!(
                 f,
-                "Unsupported file. Nexonic Clear handles JPEG, PNG and WebP."
+                "Unsupported file. Nexonic Clear handles JPEG, PNG, WebP, HEIC, AVIF, WAV, MP3, MP4, MOV, M4A and PDF."
             ),
-            Error::TooLarge => write!(f, "The file is larger than 256 MB."),
-            Error::Malformed(m) => write!(f, "The image file is damaged: {m}"),
+            Error::TooLarge => write!(f, "The file is too large."),
+            Error::Malformed(m) => write!(f, "The file is damaged: {m}"),
         }
     }
 }
@@ -310,11 +407,50 @@ pub(crate) struct Parsed {
     pub fields: Vec<Field>,
 }
 
+impl Parsed {
+    pub fn empty() -> Self {
+        Parsed {
+            width: 0,
+            height: 0,
+            has_alpha: false,
+            animated: false,
+            blocks: Vec::new(),
+            exif_tiff: None,
+            fingerprint: [0; 32],
+            embedded: None,
+            warnings: Vec::new(),
+            fields: Vec::new(),
+        }
+    }
+}
+
 fn parse(format: Format, data: &[u8]) -> Result<Parsed> {
     match format {
         Format::Jpeg => jpeg::parse(data),
         Format::Png => png::parse(data),
         Format::Webp => webp::parse(data),
+        Format::Pdf => pdf::parse(data),
+        _ => parse_src(format, &Mem(data)),
+    }
+}
+
+fn parse_src(format: Format, src: &dyn Src) -> Result<Parsed> {
+    match format {
+        Format::Wav => wav::parse(src),
+        Format::Mp3 => mp3::parse(src),
+        Format::Mp4 | Format::Mov | Format::M4a | Format::Heif | Format::Avif => bmff::parse(src),
+        _ => Err(Error::Unsupported),
+    }
+}
+
+fn plan(format: Format, src: &dyn Src, opts: &CleanOptions) -> Result<stream::Plan> {
+    match format {
+        Format::Wav => wav::clean(src, opts),
+        Format::Mp3 => mp3::clean(src, opts),
+        Format::Mp4 | Format::Mov | Format::M4a | Format::Heif | Format::Avif => {
+            bmff::clean(src, opts)
+        }
+        _ => Err(Error::Unsupported),
     }
 }
 
@@ -325,13 +461,20 @@ fn check(data: &[u8]) -> Result<Format> {
     Format::detect(data).ok_or(Error::Unsupported)
 }
 
-/// Inspect an image held in memory.
+/// Where the file being read lives, for the credential reader.
+#[derive(Clone, Copy)]
+pub(crate) enum Input<'a> {
+    Bytes(&'a [u8]),
+    Path(&'a std::path::Path),
+}
+
+/// Inspect a file held in memory.
 pub fn inspect(data: &[u8]) -> Result<Inspection> {
     inspect_inner(data, None)
 }
 
-/// Inspects an image together with a separate `.c2pa` manifest file. The
-/// sidecar is validated against the image; embedded credentials, if any,
+/// Inspects a file together with a separate `.c2pa` manifest file. The
+/// sidecar is validated against the file; embedded credentials, if any,
 /// take precedence.
 pub fn inspect_with_sidecar(data: &[u8], sidecar: &[u8]) -> Result<Inspection> {
     if sidecar.len() > MAX_SIDECAR {
@@ -344,10 +487,20 @@ pub fn inspect_with_sidecar(data: &[u8], sidecar: &[u8]) -> Result<Inspection> {
 pub const MAX_SIDECAR: usize = 32 * 1024 * 1024;
 
 fn inspect_inner(data: &[u8], sidecar: Option<&[u8]>) -> Result<Inspection> {
-    #[cfg(not(feature = "c2pa"))]
-    let _ = sidecar;
     let format = check(data)?;
     let p = parse(format, data)?;
+    Ok(build(format, p, data.len(), Input::Bytes(data), sidecar))
+}
+
+fn build(
+    format: Format,
+    p: Parsed,
+    size: usize,
+    input: Input,
+    sidecar: Option<&[u8]>,
+) -> Inspection {
+    #[cfg(not(feature = "c2pa"))]
+    let _ = (sidecar, input);
     let exif = p.exif_tiff.as_deref().and_then(exif::summarize);
     let mut details = p
         .exif_tiff
@@ -358,9 +511,9 @@ fn inspect_inner(data: &[u8], sidecar: Option<&[u8]>) -> Result<Inspection> {
     details.truncate(2000);
     #[cfg(feature = "c2pa")]
     let credentials = if p.blocks.iter().any(|b| b.kind == Kind::C2pa) {
-        credentials::read(format, data, credentials::Source::Embedded)
+        credentials::read(format, input, credentials::Source::Embedded)
     } else if let Some(m) = sidecar {
-        credentials::read(format, data, credentials::Source::Sidecar(m))
+        credentials::read(format, input, credentials::Source::Sidecar(m))
     } else {
         Credentials::default()
     };
@@ -370,13 +523,13 @@ fn inspect_inner(data: &[u8], sidecar: Option<&[u8]>) -> Result<Inspection> {
         state: "unreadable".into(),
         ..Default::default()
     };
-    Ok(Inspection {
+    Inspection {
         format,
         width: p.width,
         height: p.height,
         has_alpha: p.has_alpha,
         animated: p.animated,
-        size: data.len(),
+        size,
         blocks: p.blocks,
         exif,
         credentials,
@@ -384,12 +537,27 @@ fn inspect_inner(data: &[u8], sidecar: Option<&[u8]>) -> Result<Inspection> {
         embedded_fingerprint: p.embedded.as_ref().map(|d| hex(d)),
         warnings: p.warnings,
         details,
-    })
+    }
 }
 
 /// Remove the selected metadata and return the new file bytes.
 pub fn clean(data: &[u8], opts: &CleanOptions) -> Result<Vec<u8>> {
     let format = check(data)?;
+    match format {
+        Format::Jpeg | Format::Png | Format::Webp => {}
+        Format::Pdf => {
+            pdf::parse(data)?;
+            return pdf::clean(data, opts);
+        }
+        _ => {
+            // Only files that parse completely are rewritten.
+            parse_src(format, &Mem(data))?;
+            let out = plan(format, &Mem(data), opts)?.to_vec(&Mem(data))?;
+            // A damaged file can parse yet produce offsets that no longer resolve.
+            parse_src(format, &Mem(&out))?;
+            return Ok(out);
+        }
+    }
     let p = parse(format, data)?;
     let keep = exif::Keep {
         orientation: opts.keep_orientation,
@@ -406,7 +574,7 @@ pub fn clean(data: &[u8], opts: &CleanOptions) -> Result<Vec<u8>> {
     match format {
         Format::Jpeg => jpeg::clean(data, opts, minimal_exif.as_deref()),
         Format::Png => png::clean(data, opts, minimal_exif.as_deref()),
-        Format::Webp => webp::clean(data, opts, minimal_exif.as_deref()),
+        _ => webp::clean(data, opts, minimal_exif.as_deref()),
     }
 }
 
@@ -415,6 +583,116 @@ pub fn clean_and_verify(data: &[u8], opts: &CleanOptions) -> Result<(Vec<u8>, Cl
     let before = inspect(data)?;
     let out = clean(data, opts)?;
     let after = inspect(&out)?;
+    Ok((out, verify(before, after, opts)))
+}
+
+/// Inspects a file on disk. Audio and video are read in pieces, so files up
+/// to [`MAX_STREAM_SIZE`] are accepted; other formats up to [`MAX_FILE_SIZE`].
+pub fn inspect_path(path: &std::path::Path) -> Result<Inspection> {
+    let (format, src) = open_path(path)?;
+    match src {
+        Some(src) => {
+            let p = parse_src(format, &src)?;
+            Ok(build(
+                format,
+                p,
+                src.len() as usize,
+                Input::Path(path),
+                None,
+            ))
+        }
+        None => inspect(&read_small(path)?),
+    }
+}
+
+/// Cleans `input` into `output` and verifies the written file. The output is
+/// written to a temporary file next to it and only moved into place when
+/// verification passes; otherwise nothing is left behind. `output` may equal
+/// `input` to clean in place.
+pub fn clean_path(
+    input: &std::path::Path,
+    output: &std::path::Path,
+    opts: &CleanOptions,
+) -> Result<CleanReport> {
+    let io = |e: std::io::Error| Error::Malformed(format!("{e}"));
+    let (format, src) = open_path(input)?;
+    let tmp = temp_name(output);
+    let result = (|| -> Result<CleanReport> {
+        let report = match src {
+            Some(src) => {
+                let before = build(
+                    format,
+                    parse_src(format, &src)?,
+                    src.len() as usize,
+                    Input::Path(input),
+                    None,
+                );
+                let plan = plan(format, &src, opts)?;
+                let mut w = std::io::BufWriter::new(std::fs::File::create(&tmp).map_err(io)?);
+                plan.write(&src, &mut w)?;
+                use std::io::Write as _;
+                w.flush().map_err(io)?;
+                w.into_inner()
+                    .map_err(|e| io(e.into_error()))?
+                    .sync_all()
+                    .map_err(io)?;
+                drop(src);
+                let after = inspect_path(&tmp)?;
+                verify(before, after, opts)
+            }
+            None => {
+                let data = read_small(input)?;
+                let (out, report) = clean_and_verify(&data, opts)?;
+                if report.verified {
+                    std::fs::write(&tmp, &out).map_err(io)?;
+                }
+                report
+            }
+        };
+        if report.verified {
+            std::fs::rename(&tmp, output).map_err(io)?;
+        }
+        Ok(report)
+    })();
+    let _ = std::fs::remove_file(&tmp);
+    result
+}
+
+fn temp_name(output: &std::path::Path) -> std::path::PathBuf {
+    let name = output
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    output.with_file_name(format!(".{name}.nexonic-tmp-{}", std::process::id()))
+}
+
+fn read_small(path: &std::path::Path) -> Result<Vec<u8>> {
+    let len = std::fs::metadata(path)
+        .map_err(|e| Error::Malformed(e.to_string()))?
+        .len();
+    if len > MAX_FILE_SIZE as u64 {
+        return Err(Error::TooLarge);
+    }
+    std::fs::read(path).map_err(|e| Error::Malformed(e.to_string()))
+}
+
+/// Detects the format; returns a streaming source for audio and video.
+fn open_path(path: &std::path::Path) -> Result<(Format, Option<FileSrc>)> {
+    let src = FileSrc::open(path).map_err(|e| Error::Malformed(e.to_string()))?;
+    let mut head = vec![0u8; src.len().min(4096) as usize];
+    src.read_at(0, &mut head)?;
+    let format = Format::detect(&head).ok_or(Error::Unsupported)?;
+    if format.streams() {
+        if src.len() > MAX_STREAM_SIZE {
+            return Err(Error::TooLarge);
+        }
+        Ok((format, Some(src)))
+    } else {
+        Ok((format, None))
+    }
+}
+
+fn verify(before: Inspection, after: Inspection, opts: &CleanOptions) -> CleanReport {
     // When EXIF is removed, only the tags the user chose to keep may remain.
     let allowed = exif::kept_tags(exif::Keep {
         orientation: opts.keep_orientation,
@@ -489,19 +767,16 @@ pub fn clean_and_verify(data: &[u8], opts: &CleanOptions) -> Result<(Vec<u8>, Cl
     }
     let verified = problems.is_empty();
     let bytes_removed = before.size as i64 - after.size as i64;
-    Ok((
-        out,
-        CleanReport {
-            before,
-            after,
-            image_unchanged,
-            still_present,
-            bytes_removed,
-            verified,
-            problems,
-            notes,
-        },
-    ))
+    CleanReport {
+        before,
+        after,
+        image_unchanged,
+        still_present,
+        bytes_removed,
+        verified,
+        problems,
+        notes,
+    }
 }
 
 /// SHA-256 over image-data parts. Each part is length-prefixed so that

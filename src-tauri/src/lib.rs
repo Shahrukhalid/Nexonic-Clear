@@ -44,7 +44,7 @@ struct Cleaned {
 }
 
 // Errors cross IPC as "code|message" so the interface can translate them.
-const TOO_LARGE: &str = "too_large|The file is larger than 256 MB.";
+const TOO_LARGE: &str = "too_large|The file is too large.";
 const UNVERIFIED: &str = "unverified|This result did not pass verification and cannot be saved.";
 
 fn core_err(e: clear_core::Error) -> String {
@@ -110,11 +110,37 @@ fn output_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn ext(format: Format) -> &'static str {
-    match format {
-        Format::Jpeg => "jpg",
-        Format::Png => "png",
-        Format::Webp => "webp",
-    }
+    format.extension()
+}
+
+/// Audio and video above the in-memory limit are processed from disk.
+fn is_large(path: &str) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() > clear_core::MAX_FILE_SIZE as u64)
+}
+
+/// Cleans a large file straight from disk into private storage. The result
+/// is written only when verification passes.
+fn run_clean_large(
+    app: &AppHandle,
+    outputs: &Outputs,
+    settings: &Settings,
+    path: &str,
+) -> Result<Cleaned, String> {
+    let options = settings.0.lock().unwrap().clone().unwrap_or_default();
+    let id = outputs.next.fetch_add(1, Ordering::Relaxed);
+    let probe = clear_core::inspect_path(Path::new(path)).map_err(core_err)?;
+    let file = output_dir(app)?.join(format!("{id}.{}", ext(probe.format)));
+    let report = clear_core::clean_path(Path::new(path), &file, &options).map_err(core_err)?;
+    outputs.files.lock().unwrap().insert(
+        id,
+        Output {
+            file,
+            source: Some(PathBuf::from(path)),
+            verified: report.verified,
+            format: report.after.format,
+        },
+    );
+    Ok(Cleaned { id, report })
 }
 
 fn store(
@@ -160,6 +186,9 @@ async fn inspect(request: Request<'_>) -> Result<Inspection, String> {
 
 #[tauri::command]
 async fn inspect_path(path: String) -> Result<Inspection, String> {
+    if is_large(&path) {
+        return clear_core::inspect_path(Path::new(&path)).map_err(core_err);
+    }
     let data = read_image(&path)?;
     match sidecar_for(Path::new(&path)) {
         Some(m) => clear_core::inspect_with_sidecar(&data, &m),
@@ -208,6 +237,9 @@ async fn clean_path(
     outputs: State<'_, Outputs>,
     settings: State<'_, Settings>,
 ) -> Result<Cleaned, String> {
+    if is_large(&path) {
+        return run_clean_large(&app, &outputs, &settings, &path);
+    }
     run_clean(
         &app,
         &outputs,
@@ -228,12 +260,9 @@ async fn read_path(path: String) -> Result<Response, String> {
 fn expand(paths: Vec<String>) -> Vec<String> {
     const LIMIT: usize = 20_000;
     let supported = |p: &Path| {
-        p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-            matches!(
-                e.to_ascii_lowercase().as_str(),
-                "jpg" | "jpeg" | "png" | "webp"
-            )
-        })
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| Format::EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
     };
     let mut out = Vec::new();
     let mut stack: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();

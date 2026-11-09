@@ -23,6 +23,11 @@ from the C2PA Rust SDK (Copyright 2022 Adobe, MIT license; see
 `LICENSE-c2pa-rs-MIT` in that folder). They are used only by the test suite and
 are not included in any build.
 
+The `media.*` fixtures (WAV, MP3, MP4, MOV, M4A, HEIC, AVIF and PDF) were made
+for this project from synthetic test tones and patterns with FFmpeg, libheif
+(through pillow-heif), libavif (through Pillow) and pikepdf. They contain no
+third-party content and are used only by the test suite.
+
 ## Trust lists
 
 The certificate lists in `crates/clear-core/trust` are built into the app and

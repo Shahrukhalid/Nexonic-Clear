@@ -6,7 +6,7 @@ import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import "./style.css";
 
 type Kind = "exif" | "xmp" | "iptc" | "icc" | "c2pa" | "comment" | "embedded" | "other";
-type Format = "jpeg" | "png" | "webp";
+type Format = "jpeg" | "png" | "webp" | "heif" | "avif" | "wav" | "mp3" | "mp4" | "mov" | "m4a" | "pdf";
 
 interface Block { kind: Kind; label: string; size: number }
 interface Field { group: string; name: string; value: string; tag?: number }
@@ -46,8 +46,17 @@ interface Item {
 }
 
 const VERSION = "0.2.0";
-const MIME: Record<Format, string> = { jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
-const EXT: Record<Format, string> = { jpeg: "jpg", png: "png", webp: "webp" };
+const MIME: Record<Format, string> = {
+  jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heif: "image/heic", avif: "image/avif",
+  wav: "audio/wav", mp3: "audio/mpeg", mp4: "video/mp4", mov: "video/quicktime", m4a: "audio/mp4", pdf: "application/pdf",
+};
+const EXT: Record<Format, string> = {
+  jpeg: "jpg", png: "png", webp: "webp", heif: "heic", avif: "avif",
+  wav: "wav", mp3: "mp3", mp4: "mp4", mov: "mov", m4a: "m4a", pdf: "pdf",
+};
+const ALL_EXT = ["jpg", "jpeg", "png", "webp", "heic", "heif", "avif", "wav", "mp3", "mp4", "m4v", "mov", "m4a", "pdf"];
+/** Formats the web view can draw as a thumbnail. */
+const PREVIEW = new Set<Format>(["jpeg", "png", "webp", "avif"]);
 /** Fields that commonly identify a person, device or place. */
 const SENSITIVE = /GPS|Latitude|Longitude|Altitude|serial|owner|Artist|Creator|Copyright|Camera make|Camera model|Host computer|Unique image ID|By-line|City|Country|location/i;
 const REMOVE_KEYS: (keyof Options)[] = ["exif", "xmp", "iptc", "comments", "other", "embedded", "icc", "c2pa"];
@@ -148,7 +157,7 @@ async function addSources(sources: { name: string; source: Source }[]) {
     const item: Item = { id: nextId++, name: f.name, source: f.source, thumb: "" };
     try {
       item.info = await inspectSource(f.source);
-      item.thumb = await thumbnail(f.source, item.info.format);
+      if (PREVIEW.has(item.info.format)) item.thumb = await thumbnail(f.source, item.info.format).catch(() => "");
       if (!/\.[a-z0-9]{3,4}$/i.test(item.name)) item.name += "." + EXT[item.info.format];
     } catch (e) {
       item.error = toError(e);
@@ -175,7 +184,7 @@ async function addPaths(paths: string[]) {
 
 async function pickFiles() {
   try {
-    const picked = await open({ multiple: true, filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp"] }] });
+    const picked = await open({ multiple: true, filters: [{ name: "Media", extensions: ALL_EXT }] });
     if (!picked) return;
     const paths = Array.isArray(picked) ? picked : [picked];
     if (isAndroid) await addSources(paths.map((p) => ({ name: baseName(p), source: { uri: p } })));
@@ -244,7 +253,7 @@ async function saveOne(item: Item) {
   if (!savable(item)) return;
   try {
     if (isAndroid) {
-      const path = await save({ defaultPath: outName(item), filters: [{ name: "Image", extensions: [EXT[item.report!.after.format]] }] });
+      const path = await save({ defaultPath: outName(item), filters: [{ name: item.report!.after.format.toUpperCase(), extensions: [EXT[item.report!.after.format]] }] });
       if (!path) return;
       await writeFile(path, await api.output(item.outputId!));
       item.saved = baseName(path);
@@ -423,7 +432,7 @@ function reportCard(r: CleanReport): string {
       <li class="${r.image_unchanged ? "yes" : "no"}">${r.image_unchanged ? t("imageIdentical") : t("imageDiffers")}</li>
       <li class="${r.still_present.length ? "no" : "yes"}">${r.still_present.length ? t("stillPresent", { list: r.still_present.map(kindLabel).join(", ") }) : t("allRemoved")}</li>
       ${credAfter(r)}
-      <li class="yes">${r.after.width} × ${r.after.height}${extras.length ? ", " + extras.join(", ") : ""}</li>
+      <li class="yes">${r.after.width ? `${r.after.width} × ${r.after.height}` : r.after.format.toUpperCase()}${extras.length ? ", " + extras.join(", ") : ""}</li>
     </ul>
     <p class="small">${t("removedList", { list: removed.map((k) => `${kindLabel(k)} (${size(sumKind(r.before, k))})`).join(", ") || t("nothingRemoved") })}
     ${t("keptList", { list: kept.map(kindLabel).join(", ") || t("noMeta") })} ${r.bytes_removed > 0 ? t("smaller", { size: size(r.bytes_removed) }) : ""}</p>
@@ -489,7 +498,7 @@ function renderDetail() {
       ${showAfter ? `<figure class="appear">${preview}<figcaption>${t("cleaned")} · ${size(r!.after.size)} · ${t("identicalPixels")}</figcaption></figure>` : ""}
     </div>
     ${i.warnings.map((w) => `<p class="note">${esc(w)}</p>`).join("")}
-    <div class="meta-line">${i.format.toUpperCase()} · ${i.width} × ${i.height}${i.has_alpha ? " · alpha" : ""}${i.animated ? " · ▶" : ""}</div>
+    <div class="meta-line">${i.format.toUpperCase()}${i.width ? ` · ${i.width} × ${i.height}` : ""}${i.has_alpha ? " · alpha" : ""}${i.animated ? " · ▶" : ""}</div>
     ${item.error ? errorCard(item) : ""}
     ${r ? reportCard(r) : ""}
     <div class="actions">
