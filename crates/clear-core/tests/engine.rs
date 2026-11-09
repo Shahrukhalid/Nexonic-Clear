@@ -56,6 +56,7 @@ fn all() -> CleanOptions {
         c2pa: true,
         comments: true,
         other: true,
+        embedded: true,
         keep_orientation: false,
     }
 }
@@ -150,6 +151,7 @@ fn keeping_c2pa_while_editing_other_metadata_is_reported_honestly() {
         c2pa: false,
         comments: false,
         other: false,
+        embedded: false,
         keep_orientation: false,
     };
     let (_, r) = clean_and_verify(&signed, &none).unwrap();

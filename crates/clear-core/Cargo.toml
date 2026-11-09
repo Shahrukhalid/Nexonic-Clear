@@ -11,6 +11,7 @@ c2pa = ["dep:c2pa"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 c2pa = { version = "0.91", default-features = false, features = ["rust_native_crypto"], optional = true }
 
 [dev-dependencies]

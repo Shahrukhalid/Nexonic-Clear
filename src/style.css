@@ -130,3 +130,5 @@ summary { cursor: pointer; color: var(--muted); }
   .blocks li span:nth-child(2) { display: none; }
   .brand p { display: none; }
 }
+.noprev { display: grid; place-items: center; height: 200px; color: var(--muted); }
+.bad-note { background: var(--badbg); color: var(--bad); }

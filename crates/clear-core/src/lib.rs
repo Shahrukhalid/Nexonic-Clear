@@ -3,8 +3,9 @@
 //!
 //! Every format is handled at the container level: metadata segments/chunks
 //! are dropped or kept, and the compressed image data is copied byte for byte.
-//! [`image_fingerprint`] hashes only the image-data parts so callers can prove
-//! that cleaning did not touch the picture.
+//! `image_fingerprint` is a SHA-256 over the image-data parts only, so callers
+//! can prove that cleaning did not touch the picture. Embedded motion-photo
+//! videos and extra images are tracked separately and kept unless removed.
 
 #[cfg(feature = "c2pa")]
 mod credentials;
@@ -59,6 +60,9 @@ pub enum Kind {
     Icc,
     C2pa,
     Comment,
+    /// Motion-photo video, depth maps, HDR gain maps and other images stored
+    /// after the main picture, with their multi-picture index.
+    Embedded,
     Other,
 }
 
@@ -98,7 +102,14 @@ pub struct Inspection {
     pub blocks: Vec<Block>,
     pub exif: Option<ExifSummary>,
     pub credentials: Credentials,
+    /// SHA-256 of the image data (hex).
     pub image_fingerprint: String,
+    /// SHA-256 of embedded motion-photo or extra-image content, if present.
+    #[serde(default)]
+    pub embedded_fingerprint: Option<String>,
+    /// Facts the user should know, e.g. a motion photo whose descriptor is missing.
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 impl Inspection {
@@ -117,6 +128,9 @@ pub struct CleanOptions {
     pub c2pa: bool,
     pub comments: bool,
     pub other: bool,
+    /// Remove motion-photo video and extra embedded images (off by default).
+    #[serde(default)]
+    pub embedded: bool,
     /// When EXIF is removed, write back only the orientation tag so the image
     /// still displays the right way up.
     pub keep_orientation: bool,
@@ -132,6 +146,7 @@ impl Default for CleanOptions {
             c2pa: false,
             comments: true,
             other: true,
+            embedded: false,
             keep_orientation: true,
         }
     }
@@ -146,6 +161,7 @@ impl CleanOptions {
             Kind::Icc => self.icc,
             Kind::C2pa => self.c2pa,
             Kind::Comment => self.comments,
+            Kind::Embedded => self.embedded,
             Kind::Other => self.other,
         }
     }
@@ -160,6 +176,14 @@ pub struct CleanReport {
     /// Kinds that were requested for removal but are still present (should be empty).
     pub still_present: Vec<Kind>,
     pub bytes_removed: i64,
+    /// True only when every check passed: same format, dimensions, alpha and
+    /// animation; identical image data; kept embedded content identical; and
+    /// nothing selected left behind. Unverified results must not be exported.
+    #[serde(default)]
+    pub verified: bool,
+    /// Why verification failed, if it did.
+    #[serde(default)]
+    pub problems: Vec<String>,
     /// Plain-language notes, e.g. that keeping credentials while editing other
     /// metadata breaks their hash binding.
     pub notes: Vec<String>,
@@ -195,7 +219,9 @@ pub(crate) struct Parsed {
     pub animated: bool,
     pub blocks: Vec<Block>,
     pub exif_tiff: Option<Vec<u8>>,
-    pub fingerprint: u64,
+    pub fingerprint: [u8; 32],
+    pub embedded: Option<[u8; 32]>,
+    pub warnings: Vec<String>,
 }
 
 fn parse(format: Format, data: &[u8]) -> Result<Parsed> {
@@ -240,7 +266,9 @@ pub fn inspect(data: &[u8]) -> Result<Inspection> {
         blocks: p.blocks,
         exif,
         credentials,
-        image_fingerprint: format!("{:016x}", p.fingerprint),
+        image_fingerprint: hex(&p.fingerprint),
+        embedded_fingerprint: p.embedded.as_ref().map(|d| hex(d)),
+        warnings: p.warnings,
     })
 }
 
@@ -299,6 +327,31 @@ pub fn clean_and_verify(data: &[u8], opts: &CleanOptions) -> Result<(Vec<u8>, Cl
         notes.push("Embedded Content Credentials were removed from this file. Copies elsewhere, cloud records and platform labels are not affected.".into());
     }
     let image_unchanged = before.image_fingerprint == after.image_fingerprint;
+    let mut problems = Vec::new();
+    if !image_unchanged {
+        problems.push("The image data changed.".to_string());
+    }
+    if before.format != after.format
+        || before.width != after.width
+        || before.height != after.height
+        || before.has_alpha != after.has_alpha
+        || before.animated != after.animated
+    {
+        problems.push("The format, dimensions, transparency or animation changed.".into());
+    }
+    if !still_present.is_empty() {
+        problems.push("Some selected metadata is still present.".into());
+    }
+    if !opts.embedded && before.embedded_fingerprint != after.embedded_fingerprint {
+        problems.push("Embedded motion-photo or extra-image content changed.".into());
+    }
+    if before.has(Kind::Embedded) && !opts.embedded && opts.xmp && before.has(Kind::Xmp) {
+        notes.push("The motion photo or extra images were kept, but XMP was removed. Some viewers use XMP to find them and may now show only the still image.".into());
+    }
+    if before.has(Kind::Embedded) && opts.embedded {
+        notes.push("The embedded motion-photo video or extra images were removed.".into());
+    }
+    let verified = problems.is_empty();
     let bytes_removed = before.size as i64 - after.size as i64;
     Ok((
         out,
@@ -308,26 +361,34 @@ pub fn clean_and_verify(data: &[u8], opts: &CleanOptions) -> Result<(Vec<u8>, Cl
             image_unchanged,
             still_present,
             bytes_removed,
+            verified,
+            problems,
             notes,
         },
     ))
 }
 
-/// FNV-1a 64-bit, used only to compare image data before and after cleaning.
-pub(crate) struct Fnv(u64);
-impl Fnv {
+/// SHA-256 over image-data parts. Each part is length-prefixed so that
+/// moving bytes between parts cannot produce the same digest.
+pub(crate) struct Digest(sha2::Sha256);
+impl Digest {
     pub fn new() -> Self {
-        Fnv(0xcbf29ce484222325)
+        use sha2::Digest as _;
+        Digest(sha2::Sha256::new())
     }
     pub fn add(&mut self, bytes: &[u8]) {
-        for &b in bytes {
-            self.0 ^= b as u64;
-            self.0 = self.0.wrapping_mul(0x100000001b3);
-        }
+        use sha2::Digest as _;
+        self.0.update((bytes.len() as u64).to_le_bytes());
+        self.0.update(bytes);
     }
-    pub fn finish(&self) -> u64 {
-        self.0
+    pub fn finish(self) -> [u8; 32] {
+        use sha2::Digest as _;
+        self.0.finalize().into()
     }
+}
+
+fn hex(d: &[u8]) -> String {
+    d.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub(crate) fn be16(d: &[u8], i: usize) -> Option<u16> {

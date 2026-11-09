@@ -5,3 +5,7 @@
 /src-tauri/notices
 /release-assets
 /test-results
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/Cargo.lock

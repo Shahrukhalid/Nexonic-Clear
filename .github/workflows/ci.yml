@@ -37,3 +37,25 @@ jobs:
       - name: Native self-test (real interface and IPC)
         run: xvfb-run -a python3 scripts/selftest.py target/release/nexonic-clear
       - run: npm audit --omit=dev --audit-level=high
+  fuzz:
+    name: Coverage-guided fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+        with:
+          workspaces: fuzz
+      # Build the cargo-fuzz tool with stable Rust; only the fuzzing itself needs nightly.
+      - run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install cargo-fuzz --version 0.13.1 --locked
+      - name: Fuzz the parsers and cleaner for 3 minutes
+        run: |
+          mkdir -p fuzz/corpus
+          cp crates/clear-core/tests/fixtures/*.jpg crates/clear-core/tests/fixtures/*.png crates/clear-core/tests/fixtures/*.webp fuzz/corpus/
+          cargo +nightly fuzz run parse_and_clean fuzz/corpus -- -max_total_time=180 -rss_limit_mb=2048
+

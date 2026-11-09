@@ -1,6 +1,6 @@
 //! PNG: chunk-level parsing and rewriting. Pixel data (IDAT/fdAT) is copied as is.
 
-use crate::{be32, malformed, Block, CleanOptions, Fnv, Kind, Parsed, Result};
+use crate::{be32, malformed, Block, CleanOptions, Digest, Kind, Parsed, Result};
 
 struct Chunk<'a> {
     ty: [u8; 4],
@@ -8,11 +8,15 @@ struct Chunk<'a> {
     whole: &'a [u8],
 }
 
-fn chunks(d: &[u8]) -> Result<Vec<Chunk<'_>>> {
-    let mut out = Vec::new();
+/// Chunks up to and including IEND, plus any bytes after IEND.
+fn chunks(d: &[u8]) -> Result<(Vec<Chunk<'_>>, &[u8])> {
+    let mut out: Vec<Chunk> = Vec::new();
     let mut i = 8;
     loop {
         let len = be32(d, i).ok_or_else(|| malformed("truncated chunk header"))? as usize;
+        if len > 0x7FFF_FFFF {
+            return Err(malformed("chunk length out of range"));
+        }
         let ty: [u8; 4] = d
             .get(i + 4..i + 8)
             .ok_or_else(|| malformed("truncated chunk type"))?
@@ -25,14 +29,30 @@ fn chunks(d: &[u8]) -> Result<Vec<Chunk<'_>>> {
         if !ty.iter().all(u8::is_ascii_alphabetic) {
             return Err(malformed("invalid chunk type"));
         }
+        let data = &d[i + 8..i + 8 + len];
+        let mut crc = Crc::new();
+        crc.add(&ty);
+        crc.add(data);
+        if be32(d, i + 8 + len) != Some(crc.finish()) {
+            return Err(malformed("chunk checksum mismatch"));
+        }
+        match (&ty, out.is_empty()) {
+            (b"IHDR", true) if len == 13 => {}
+            (b"IHDR", _) => return Err(malformed("invalid or repeated IHDR")),
+            (_, true) => return Err(malformed("IHDR must be the first chunk")),
+            _ => {}
+        }
         out.push(Chunk {
             ty,
-            data: &d[i + 8..i + 8 + len],
+            data,
             whole: &d[i..end],
         });
         i = end;
         if &ty == b"IEND" {
-            return Ok(out);
+            if !out.iter().any(|c| &c.ty == b"IDAT") {
+                return Err(malformed("no image data"));
+            }
+            return Ok((out, &d[i..]));
         }
     }
 }
@@ -105,7 +125,7 @@ fn pixel_relevant(t: &[u8; 4]) -> bool {
 }
 
 pub fn parse(d: &[u8]) -> Result<Parsed> {
-    let cs = chunks(d)?;
+    let (cs, trailer) = chunks(d)?;
     let ihdr = cs
         .first()
         .filter(|c| &c.ty == b"IHDR" && c.data.len() >= 13)
@@ -118,9 +138,14 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
         animated: cs.iter().any(|c| &c.ty == b"acTL"),
         blocks: Vec::new(),
         exif_tiff: None,
-        fingerprint: 0,
+        fingerprint: [0; 32],
+        embedded: None,
+        warnings: Vec::new(),
     };
-    let mut fp = Fnv::new();
+    if p.width == 0 || p.height == 0 {
+        return Err(malformed("invalid image dimensions"));
+    }
+    let mut fp = Digest::new();
     for c in &cs {
         if let Some((kind, label)) = classify(c) {
             if &c.ty == b"eXIf" && p.exif_tiff.is_none() {
@@ -136,12 +161,19 @@ pub fn parse(d: &[u8]) -> Result<Parsed> {
             fp.add(c.whole);
         }
     }
+    if trailer.iter().any(|&b| b != 0) {
+        p.blocks.push(Block {
+            kind: Kind::Other,
+            label: "Data after end of image".into(),
+            size: trailer.len(),
+        });
+    }
     p.fingerprint = fp.finish();
     Ok(p)
 }
 
 pub fn clean(d: &[u8], o: &CleanOptions, minimal_exif: Option<&[u8]>) -> Result<Vec<u8>> {
-    let cs = chunks(d)?;
+    let (cs, trailer) = chunks(d)?;
     let mut out = Vec::with_capacity(d.len());
     out.extend_from_slice(&d[..8]);
     let mut pending = minimal_exif;
@@ -156,6 +188,9 @@ pub fn clean(d: &[u8], o: &CleanOptions, minimal_exif: Option<&[u8]>) -> Result<
             Some((kind, _)) if o.removes(kind) => {}
             _ => out.extend_from_slice(c.whole),
         }
+    }
+    if !o.other {
+        out.extend_from_slice(trailer);
     }
     Ok(out)
 }
