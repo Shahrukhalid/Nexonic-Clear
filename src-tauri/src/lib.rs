@@ -279,22 +279,30 @@ async fn save_one(
     name: String,
     outputs: State<'_, Outputs>,
 ) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let (file, format) = verified_file(&outputs, id)?;
-    let Some(dest) = app
-        .dialog()
-        .file()
-        .set_file_name(&name)
-        .add_filter("Image", &[ext(format)])
-        .blocking_save_file()
-    else {
-        return Ok(None);
-    };
-    let dest = dest
-        .into_path()
-        .map_err(|_| "Unsupported destination.".to_string())?;
-    atomic_copy(&file, &dest)?;
-    Ok(dest.file_name().map(|n| n.to_string_lossy().into_owned()))
+    #[cfg(mobile)]
+    {
+        let _ = (app, id, name, outputs);
+        return Err("Saving this way is available on desktop only.".into());
+    }
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_dialog::DialogExt;
+        let (file, format) = verified_file(&outputs, id)?;
+        let Some(dest) = app
+            .dialog()
+            .file()
+            .set_file_name(&name)
+            .add_filter("Image", &[ext(format)])
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let dest = dest
+            .into_path()
+            .map_err(|_| "Unsupported destination.".to_string())?;
+        atomic_copy(&file, &dest)?;
+        Ok(dest.file_name().map(|n| n.to_string_lossy().into_owned()))
+    }
 }
 
 /// Desktop: asks for a folder and saves every verified result there,
@@ -305,45 +313,53 @@ async fn save_all(
     items: Vec<(u64, String)>,
     outputs: State<'_, Outputs>,
 ) -> Result<Option<(String, Vec<Saved>)>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let Some(dir) = app.dialog().file().blocking_pick_folder() else {
-        return Ok(None);
-    };
-    let dir = dir
-        .into_path()
-        .map_err(|_| "Unsupported folder.".to_string())?;
-    let mut saved = Vec::new();
-    for (id, name) in items {
-        let Ok((file, _)) = verified_file(&outputs, id) else {
-            continue;
-        };
-        let safe: String = name
-            .chars()
-            .map(|c| {
-                if c.is_control() || "/\\:*?\"<>|".contains(c) {
-                    '_'
-                } else {
-                    c
-                }
-            })
-            .collect();
-        let (stem, extn) = match safe.rsplit_once('.') {
-            Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
-            _ => (safe.clone(), String::new()),
-        };
-        let mut dest = dir.join(&safe);
-        let mut n = 2;
-        while dest.exists() {
-            dest = dir.join(format!("{stem}-{n}{extn}"));
-            n += 1;
-        }
-        atomic_copy(&file, &dest)?;
-        saved.push(Saved {
-            id,
-            name: dest.file_name().unwrap().to_string_lossy().into_owned(),
-        });
+    #[cfg(mobile)]
+    {
+        let _ = (app, items, outputs);
+        return Err("Saving this way is available on desktop only.".into());
     }
-    Ok(Some((dir.to_string_lossy().into_owned(), saved)))
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_dialog::DialogExt;
+        let Some(dir) = app.dialog().file().blocking_pick_folder() else {
+            return Ok(None);
+        };
+        let dir = dir
+            .into_path()
+            .map_err(|_| "Unsupported folder.".to_string())?;
+        let mut saved = Vec::new();
+        for (id, name) in items {
+            let Ok((file, _)) = verified_file(&outputs, id) else {
+                continue;
+            };
+            let safe: String = name
+                .chars()
+                .map(|c| {
+                    if c.is_control() || "/\\:*?\"<>|".contains(c) {
+                        '_'
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            let (stem, extn) = match safe.rsplit_once('.') {
+                Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+                _ => (safe.clone(), String::new()),
+            };
+            let mut dest = dir.join(&safe);
+            let mut n = 2;
+            while dest.exists() {
+                dest = dir.join(format!("{stem}-{n}{extn}"));
+                n += 1;
+            }
+            atomic_copy(&file, &dest)?;
+            saved.push(Saved {
+                id,
+                name: dest.file_name().unwrap().to_string_lossy().into_owned(),
+            });
+        }
+        Ok(Some((dir.to_string_lossy().into_owned(), saved)))
+    }
 }
 
 #[tauri::command]
