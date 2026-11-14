@@ -70,6 +70,9 @@ On Android, share photos, audio, video or PDFs to Nexonic Clear from any app.
 | Mac with Intel | [NexonicClear-macOS-Intel.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-Intel.zip) |
 | Android (most phones, ARM64) | [NexonicClear-Android-ARM64.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM64.apk) |
 | Android (older phones, ARM32) | [NexonicClear-Android-ARM32.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM32.apk) |
+| Linux x64, AppImage | [NexonicClear-Linux-x64.AppImage](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Linux-x64.AppImage) |
+| Linux x64, Debian and Ubuntu | [NexonicClear-Linux-x64.deb](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Linux-x64.deb) |
+| Command-line tool | [Windows](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-Windows-x64.zip), [Mac Apple Silicon](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-macOS-AppleSilicon.zip), [Mac Intel](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-macOS-Intel.zip), [Linux](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-Linux-x64.zip) |
 
 Nothing to install on desktop: unzip and run. Verify downloads with [SHA256SUMS.txt](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/SHA256SUMS.txt). All versions are on the [Releases](https://github.com/Shahrukhalid/Nexonic-Clear/releases) page.
 

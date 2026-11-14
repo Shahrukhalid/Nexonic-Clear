@@ -17,11 +17,13 @@ debs = sorted((build / "bundle/deb").glob("*.deb"))
 if len(images) != 1 or len(debs) != 1:
     raise SystemExit(f"expected one AppImage and one deb, found {images} {debs}")
 # The deb must contain the app and its notices.
+# dpkg-deb lists paths as "./usr/..." or "usr/..." depending on its version.
 listing = subprocess.run(["dpkg-deb", "-c", str(debs[0])], check=True, capture_output=True, text=True).stdout
-if "/usr/bin/nexonic-clear" not in listing or "notices/INDEX.json" not in listing:
-    raise SystemExit("deb is missing the app or its notices")
-shutil.copy2(images[0], out / f"NexonicClear-{version}-{label}.AppImage")
-shutil.copy2(debs[0], out / f"NexonicClear-{version}-{label}.deb")
+paths = {line.split(maxsplit=5)[-1].lstrip("./") for line in listing.splitlines() if line.strip()}
+if "usr/bin/nexonic-clear" not in paths or not any(p.endswith("/notices/INDEX.json") for p in paths):
+    raise SystemExit(f"deb is missing the app or its notices: {sorted(paths)[:20]}")
+shutil.copy2(images[0], out / f"NexonicClear-{label}.AppImage")
+shutil.copy2(debs[0], out / f"NexonicClear-{label}.deb")
 cli = build / "nexonic-clear-cli"
 subprocess.run([str(cli), "inspect", "-q", "--json", str(ROOT / "crates/clear-core/tests/fixtures/media.pdf")], check=True, stdout=subprocess.DEVNULL)
 with tempfile.TemporaryDirectory() as tmp:
