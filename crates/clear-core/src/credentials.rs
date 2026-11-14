@@ -7,9 +7,12 @@
 //!
 //! Nothing is reported as trusted unless the validator says so for a bundled list.
 
-use crate::{Credentials, Format, IngredientInfo, ManifestInfo, ProfileResult};
+use crate::{Credentials, Format, IngredientInfo, Input, ManifestInfo, ProfileResult};
 use c2pa::{Context, Reader, ValidationState};
 use std::io::Cursor;
+
+trait ReadSeek: std::io::Read + std::io::Seek + Send {}
+impl<T: std::io::Read + std::io::Seek + Send> ReadSeek for T {}
 
 const OFFICIAL_SIGNERS: &str = include_str!("../trust/C2PA-TRUST-LIST.pem");
 const OFFICIAL_TSA: &str = include_str!("../trust/C2PA-TSA-TRUST-LIST.pem");
@@ -94,16 +97,26 @@ fn profiles() -> Vec<(&'static str, String)> {
     ]
 }
 
-fn open(settings: &str, format: Format, data: &[u8], source: Source) -> Result<Reader, String> {
+fn open(settings: &str, format: Format, data: Input, source: Source) -> Result<Reader, String> {
     let ctx = Context::new()
         .with_settings(settings)
         .map_err(|e| format!("Validator setup failed: {e}"))?;
     let reader = Reader::from_context(ctx);
-    match source {
-        Source::Embedded => reader.with_stream(format.mime(), Cursor::new(data)),
-        Source::Sidecar(m) => {
-            reader.with_manifest_data_and_stream(m, format.mime(), Cursor::new(data))
+    let mut file;
+    let mut cursor;
+    let stream: &mut dyn ReadSeek = match data {
+        Input::Bytes(b) => {
+            cursor = Cursor::new(b);
+            &mut cursor
         }
+        Input::Path(p) => {
+            file = std::fs::File::open(p).map_err(|e| format!("Could not open the file: {e}"))?;
+            &mut file
+        }
+    };
+    match source {
+        Source::Embedded => reader.with_stream(format.mime(), stream),
+        Source::Sidecar(m) => reader.with_manifest_data_and_stream(m, format.mime(), stream),
     }
     .map_err(|e| format!("Could not read the credentials: {e}"))
 }
@@ -129,12 +142,13 @@ fn is_trust_notice(code: &str) -> bool {
 
 /// Validates with each bundled profile. `extra` adds a caller-supplied trust
 /// anchor profile (used by tests with the test signing root).
-pub fn read(format: Format, data: &[u8], source: Source) -> Credentials {
+pub(crate) fn read(format: Format, data: Input, source: Source) -> Credentials {
     read_profiles(format, data, source, profiles())
 }
 
 #[doc(hidden)]
 pub fn read_with_anchor(format: Format, data: &[u8], source: Source, pem: &str) -> Credentials {
+    let data = Input::Bytes(data);
     let mut p = profiles();
     p.truncate(1);
     p.push((
@@ -152,7 +166,7 @@ pub fn read_with_anchor(format: Format, data: &[u8], source: Source, pem: &str) 
 
 fn read_profiles(
     format: Format,
-    data: &[u8],
+    data: Input,
     source: Source,
     list: Vec<(&'static str, String)>,
 ) -> Credentials {

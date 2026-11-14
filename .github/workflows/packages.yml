@@ -30,6 +30,9 @@ jobs:
             target: x86_64-apple-darwin
             build: --bundles app
     runs-on: ${{ matrix.os }}
+    env:
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+      HAS_APPLE_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -47,12 +50,80 @@ jobs:
       - name: Build
         shell: bash
         env:
-          APPLE_SIGNING_IDENTITY: '-'
-        run: npm run tauri -- build ${{ matrix.build }} --ci
+          # Signing and notarization run only when the owner has added these
+          # secrets; otherwise the macOS app is ad-hoc signed as before.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Unset empty values so the bundler doesn't try to use them.
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          npm run tauri -- build ${{ matrix.build }} --ci
+      - name: Command-line tool
+        run: cargo build -p clear-cli --release --locked
+      - name: Sign the macOS command-line tool
+        if: runner.os == 'macOS' && env.HAS_APPLE_IDENTITY == 'true'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: codesign --force --sign "$APPLE_SIGNING_IDENTITY" --options runtime --timestamp target/release/nexonic-clear-cli
+      - name: Sign Windows executables
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          foreach ($exe in "target\release\nexonic-clear.exe", "target\release\nexonic-clear-cli.exe") {
+            & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            & $signtool.FullName verify /pa $exe
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          Remove-Item $pfx
       - run: python scripts/package_desktop.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-${{ matrix.target }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+  linux:
+    name: Linux (AppImage and deb)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
+      - name: System libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf xvfb
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: cargo test -p clear-core -p clear-cli --locked
+      - run: python3 scripts/notices.py --target x86_64-unknown-linux-gnu
+      - run: npm run tauri -- build --bundles appimage,deb --ci
+      - run: cargo build -p clear-cli --release --locked
+      - name: Native self-test (real interface and IPC)
+        run: xvfb-run -a python3 scripts/selftest.py target/release/nexonic-clear
+      - run: python3 scripts/package_linux.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-linux
           path: release-assets/*
           if-no-files-found: error
           retention-days: 14
@@ -63,6 +134,7 @@ jobs:
     env:
       NDK_VERSION: 27.3.13750724
       PKG: com.nexonic.clear
+      HAS_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE != '' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -107,6 +179,7 @@ jobs:
               }
           }
           KTS
+          python3 scripts/android_share.py
       - name: Collect Rust and JavaScript notices (required by the bundler)
         run: python3 scripts/notices.py --target aarch64-linux-android
       - name: Build emulator test APK (debug, x86_64)
@@ -142,6 +215,45 @@ jobs:
           emulator-boot-timeout: 600
           script: bash scripts/android_selftest.sh
       - run: python3 scripts/package_android.py
+      - name: Google Play bundle (signed with the upload key)
+        if: env.HAS_ANDROID_KEYSTORE == 'true'
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          NEXONIC_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          NEXONIC_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          NEXONIC_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export NEXONIC_KEYSTORE="$RUNNER_TEMP/upload.jks"
+          echo "$ANDROID_KEYSTORE" | base64 -d > "$NEXONIC_KEYSTORE"
+          cat >> src-tauri/gen/android/app/build.gradle.kts <<'KTS'
+
+          android {
+              signingConfigs {
+                  create("upload") {
+                      storeFile = file(System.getenv("NEXONIC_KEYSTORE"))
+                      storePassword = System.getenv("NEXONIC_KEYSTORE_PASSWORD")
+                      keyAlias = System.getenv("NEXONIC_KEY_ALIAS")
+                      keyPassword = System.getenv("NEXONIC_KEY_PASSWORD")
+                  }
+              }
+              buildTypes { getByName("release") { signingConfig = signingConfigs.getByName("upload") } }
+          }
+          KTS
+          npm run tauri -- android build --aab --ci
+          aab=$(find src-tauri/gen/android/app/build/outputs/bundle -name '*release*.aab' | head -n 1)
+          jarsigner -verify "$aab"
+          version=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          cp "$aab" "release-assets/NexonicClear-$version-Android-GooglePlay.aab"
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          out = Path("release-assets"); v = out / "VALIDATION-Android.json"
+          data = json.loads(v.read_text())
+          for p in out.glob("*.aab"):
+              data["assets"].append({"name": p.name, "bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()})
+          v.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+          rm -f "$NEXONIC_KEYSTORE"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-android
@@ -151,7 +263,7 @@ jobs:
   publish:
     name: Publish release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [desktop, android]
+    needs: [desktop, linux, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -169,4 +281,6 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           pre=""; [[ "$TAG" == *-* ]] && pre="--prerelease"
-          gh release create "$TAG" release-assets/*.zip release-assets/*.apk release-assets/SHA256SUMS.txt --verify-tag $pre --title "Nexonic Clear $TAG" --notes-file docs/RELEASE_NOTES.md
+          shopt -s nullglob
+          files=(release-assets/*.zip release-assets/*.apk release-assets/*.aab release-assets/*.AppImage release-assets/*.deb release-assets/SHA256SUMS.txt)
+          gh release create "$TAG" "${files[@]}" --verify-tag $pre --title "Nexonic Clear $TAG" --notes-file docs/RELEASE_NOTES.md

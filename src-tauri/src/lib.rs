@@ -44,7 +44,7 @@ struct Cleaned {
 }
 
 // Errors cross IPC as "code|message" so the interface can translate them.
-const TOO_LARGE: &str = "too_large|The file is larger than 256 MB.";
+const TOO_LARGE: &str = "too_large|The file is too large.";
 const UNVERIFIED: &str = "unverified|This result did not pass verification and cannot be saved.";
 
 fn core_err(e: clear_core::Error) -> String {
@@ -110,11 +110,37 @@ fn output_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn ext(format: Format) -> &'static str {
-    match format {
-        Format::Jpeg => "jpg",
-        Format::Png => "png",
-        Format::Webp => "webp",
-    }
+    format.extension()
+}
+
+/// Audio and video above the in-memory limit are processed from disk.
+fn is_large(path: &str) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() > clear_core::MAX_FILE_SIZE as u64)
+}
+
+/// Cleans a large file straight from disk into private storage. The result
+/// is written only when verification passes.
+fn run_clean_large(
+    app: &AppHandle,
+    outputs: &Outputs,
+    settings: &Settings,
+    path: &str,
+) -> Result<Cleaned, String> {
+    let options = settings.0.lock().unwrap().clone().unwrap_or_default();
+    let id = outputs.next.fetch_add(1, Ordering::Relaxed);
+    let probe = clear_core::inspect_path(Path::new(path)).map_err(core_err)?;
+    let file = output_dir(app)?.join(format!("{id}.{}", ext(probe.format)));
+    let report = clear_core::clean_path(Path::new(path), &file, &options).map_err(core_err)?;
+    outputs.files.lock().unwrap().insert(
+        id,
+        Output {
+            file,
+            source: Some(PathBuf::from(path)),
+            verified: report.verified,
+            format: report.after.format,
+        },
+    );
+    Ok(Cleaned { id, report })
 }
 
 fn store(
@@ -160,6 +186,9 @@ async fn inspect(request: Request<'_>) -> Result<Inspection, String> {
 
 #[tauri::command]
 async fn inspect_path(path: String) -> Result<Inspection, String> {
+    if is_large(&path) {
+        return clear_core::inspect_path(Path::new(&path)).map_err(core_err);
+    }
     let data = read_image(&path)?;
     match sidecar_for(Path::new(&path)) {
         Some(m) => clear_core::inspect_with_sidecar(&data, &m),
@@ -208,6 +237,9 @@ async fn clean_path(
     outputs: State<'_, Outputs>,
     settings: State<'_, Settings>,
 ) -> Result<Cleaned, String> {
+    if is_large(&path) {
+        return run_clean_large(&app, &outputs, &settings, &path);
+    }
     run_clean(
         &app,
         &outputs,
@@ -223,17 +255,56 @@ async fn read_path(path: String) -> Result<Response, String> {
     read_image(&path).map(Response::new)
 }
 
+/// Files shared into the app from another app (Android share sheet). The
+/// Android activity copies them into `<cache>/shared`; each call moves them to
+/// a new folder and returns their paths, so every file is returned once.
+#[tauri::command]
+async fn take_shared(app: AppHandle) -> Vec<String> {
+    let Ok(cache) = app.path().app_cache_dir() else {
+        return Vec::new();
+    };
+    take_shared_from(&cache)
+}
+
+fn take_shared_from(cache: &Path) -> Vec<String> {
+    let inbox = cache.join("shared");
+    let Ok(rd) = std::fs::read_dir(&inbox) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    if files.is_empty() {
+        return Vec::new();
+    }
+    files.sort();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let taken = cache.join("shared-taken").join(stamp.to_string());
+    if std::fs::create_dir_all(&taken).is_err() {
+        return Vec::new();
+    }
+    files
+        .into_iter()
+        .filter_map(|f| {
+            let to = taken.join(f.file_name()?);
+            std::fs::rename(&f, &to).ok()?;
+            Some(to.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
 /// Expands dropped or chosen folders into supported image files, recursively.
 /// Symbolic links are not followed; at most 20,000 files are returned.
 fn expand(paths: Vec<String>) -> Vec<String> {
     const LIMIT: usize = 20_000;
     let supported = |p: &Path| {
-        p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-            matches!(
-                e.to_ascii_lowercase().as_str(),
-                "jpg" | "jpeg" | "png" | "webp"
-            )
-        })
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| Format::EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
     };
     let mut out = Vec::new();
     let mut stack: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
@@ -523,6 +594,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            take_shared,
             inspect,
             inspect_path,
             set_options,
@@ -622,5 +694,21 @@ mod tests {
         // A failing write leaves the destination untouched and cleans up.
         assert!(atomic_copy(&d.join("missing.bin"), &dest, None).is_err());
         assert_eq!(std::fs::read(&dest).unwrap(), vec![7u8; 100_000]);
+    }
+}
+
+#[cfg(test)]
+mod shared_tests {
+    #[test]
+    fn shared_files_are_returned_once() {
+        let cache = std::env::temp_dir().join(format!("nexonic-share-{}", std::process::id()));
+        std::fs::create_dir_all(cache.join("shared")).unwrap();
+        std::fs::write(cache.join("shared/a.jpg"), b"x").unwrap();
+        std::fs::write(cache.join("shared/b.mp4"), b"y").unwrap();
+        let got = super::take_shared_from(&cache);
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|p| std::path::Path::new(p).is_file()));
+        assert!(super::take_shared_from(&cache).is_empty());
+        let _ = std::fs::remove_dir_all(cache);
     }
 }

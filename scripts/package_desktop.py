@@ -52,6 +52,20 @@ else:
     subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app),
                     str(out / f"NexonicClear-{label}.zip")], check=True)
 
+# Command-line tool: smoke-test it on a real file, then ship it as its own zip.
+cli = build / ("nexonic-clear-cli.exe" if platform.system() == "Windows" else "nexonic-clear-cli")
+if cli.is_file():
+    sample = ROOT / "crates/clear-core/tests/fixtures/media.mp4"
+    subprocess.run([str(cli), "inspect", "--json", "-q", str(sample)], check=True, stdout=subprocess.DEVNULL)
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "nexonic-clear-cli"
+        folder.mkdir()
+        shutil.copy2(cli, folder / cli.name)
+        shutil.copytree(notices, folder / "notices")
+        (folder / "README.txt").write_text(readme.format(version=version, label=label + " command-line tool",
+            run=f"Run {cli.name} --help for usage. `{cli.name} integrate install` adds \"Clean with Nexonic Clear\" to the file manager menu."))
+        shutil.make_archive(str(out / f"NexonicClear-CLI-{label}"), "zip", tmp)
+
 assets = [{"name": p.name, "bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
           for p in sorted(out.glob(f"*{label}*.zip"))]
 (out / f"VALIDATION-{label}.json").write_text(json.dumps(

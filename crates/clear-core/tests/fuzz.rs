@@ -81,6 +81,14 @@ fn mutated_real_files_never_panic_and_clean_output_is_stable() {
         "mars.webp",
         "test.webp",
         "CA.jpg",
+        "media.wav",
+        "media.mp3",
+        "media.mp4",
+        "media.mov",
+        "media.m4a",
+        "media.heic",
+        "media.avif",
+        "media.pdf",
     ]
     .iter()
     .enumerate()
@@ -90,7 +98,11 @@ fn mutated_real_files_never_panic_and_clean_output_is_stable() {
             env!("CARGO_MANIFEST_DIR")
         ))
         .unwrap();
-        let rounds = if *name == "CA.jpg" { 150 } else { 1500 };
+        let rounds = if *name == "CA.jpg" || name.starts_with("media.") {
+            150
+        } else {
+            1500
+        };
         let mut rng = Rng(0x9E37_79B9_7F4A_7C15 ^ (n as u64 + 1));
         for _ in 0..rounds {
             let d = mutate(&mut rng, &src);

@@ -1,6 +1,6 @@
 <p align="center"><img src="src-tauri/icons/128x128.png" width="96" alt="Nexonic Clear" /></p>
 <h1 align="center">Nexonic Clear</h1>
-<p align="center">Inspect and remove image metadata and Content Credentials. Offline, lossless, open source.</p>
+<p align="center">Inspect and remove metadata and Content Credentials from photos, audio, video and PDFs. Offline, lossless, open source.</p>
 
 <p align="center"><img src="docs/screenshot.png" width="860" alt="Nexonic Clear showing a cleaned photo and its verification report" /></p>
 
@@ -24,7 +24,35 @@
 - **Safe saving.** Only results that pass verification can be saved. Desktop saves are atomic, so a file is never left half-written, and originals are never overwritten.
 - **Private by design.** No network access, accounts, telemetry or ads. Files never leave your device.
 
-Supported formats: JPEG, PNG and WebP (including animated PNG and WebP).
+Supported formats:
+
+- **Images:** JPEG, PNG, WebP (including animated PNG and WebP), HEIC and AVIF.
+- **Audio:** WAV (including RF64 and Broadcast WAV), MP3 and M4A.
+- **Video:** MP4 and MOV.
+- **Documents:** PDF.
+
+Audio and video are cleaned without re-encoding: tags, QuickTime location, make and model, XMP, cover art and Content Credentials are removed while every audio and video sample is copied byte for byte, and chunk offsets are rewritten and verified. On desktop, audio and video up to 64 GB are processed from disk. PDFs are rewritten as a complete new file, so removed document information, XMP and attachments do not survive in older revisions; encrypted PDFs are not supported.
+
+## Command-line tool
+
+`nexonic-clear-cli` uses the same engine and the same verification as the app. It runs on Windows, macOS and Linux.
+
+```sh
+nexonic-clear-cli inspect photo.heic                   # what is in a file
+nexonic-clear-cli clean -r ~/Pictures/trip -o ~/clean  # clean a folder into another folder
+nexonic-clear-cli clean --in-place --keep c2pa doc.pdf # replace the original, keep credentials
+nexonic-clear-cli clean --json clip.mov > report.json  # JSON report
+nexonic-clear-cli watch ~/Inbox --out ~/Clean          # clean new files as they arrive
+nexonic-clear-cli integrate install                    # add "Clean with Nexonic Clear" to the file manager
+```
+
+- Without `--out` or `--in-place`, cleaned copies are written next to the originals as `name.clean.ext`. Existing files are never replaced unless you pass `--overwrite`.
+- Files run in parallel (`-j` sets how many), progress goes to standard error, and Ctrl+C stops after the files in progress.
+- Exit codes: 0 success, 1 a result failed verification (nothing is written for it), 2 usage error, 3 a file could not be read or is unsupported, 130 cancelled.
+- `watch` waits until a new file stops changing, then cleans it into `--out`. Unverified results are never written.
+- `integrate install` adds the menu for the current user: Windows Explorer (files and folders), macOS Finder (Quick Action) and Linux (GNOME Files script and KDE Dolphin service menu). `integrate uninstall` removes it.
+
+On Android, share photos, audio, video or PDFs to Nexonic Clear from any app.
 
 ## Download
 
@@ -42,6 +70,9 @@ Supported formats: JPEG, PNG and WebP (including animated PNG and WebP).
 | Mac with Intel | [NexonicClear-macOS-Intel.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-Intel.zip) |
 | Android (most phones, ARM64) | [NexonicClear-Android-ARM64.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM64.apk) |
 | Android (older phones, ARM32) | [NexonicClear-Android-ARM32.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM32.apk) |
+| Linux x64, AppImage | [NexonicClear-Linux-x64.AppImage](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Linux-x64.AppImage) |
+| Linux x64, Debian and Ubuntu | [NexonicClear-Linux-x64.deb](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Linux-x64.deb) |
+| Command-line tool | [Windows](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-Windows-x64.zip), [Mac Apple Silicon](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-macOS-AppleSilicon.zip), [Mac Intel](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-macOS-Intel.zip), [Linux](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-Linux-x64.zip) |
 
 Nothing to install on desktop: unzip and run. Verify downloads with [SHA256SUMS.txt](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/SHA256SUMS.txt). All versions are on the [Releases](https://github.com/Shahrukhalid/Nexonic-Clear/releases) page.
 
