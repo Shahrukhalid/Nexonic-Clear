@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "clear-cli"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "clear-core",
  "ctrlc",
@@ -891,7 +891,7 @@ dependencies = [
 
 [[package]]
 name = "clear-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "c2pa",
  "image",
@@ -3138,7 +3138,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexonic-clear"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "clear-core",
  "serde",
