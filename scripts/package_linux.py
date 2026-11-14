@@ -1,8 +1,10 @@
 """Collect the Linux AppImage, deb and command-line tool after smoke tests."""
 import hashlib
+import io
 import json
 import shutil
 import subprocess
+import tarfile
 import tempfile
 from pathlib import Path
 
@@ -22,6 +24,13 @@ listing = subprocess.run(["dpkg-deb", "-c", str(debs[0])], check=True, capture_o
 paths = {line.split(maxsplit=5)[-1].lstrip("./") for line in listing.splitlines() if line.strip()}
 if "usr/bin/nexonic-clear" not in paths or not any(p.endswith("/notices/INDEX.json") for p in paths):
     raise SystemExit(f"deb is missing the app or its notices: {sorted(paths)[:20]}")
+# File managers must be able to open files with the app.
+desktop = subprocess.run(["dpkg-deb", "--fsys-tarfile", str(debs[0])], check=True, capture_output=True).stdout
+with tarfile.open(fileobj=io.BytesIO(desktop)) as tar:
+    entry = next(m for m in tar.getmembers() if m.name.endswith(".desktop") and "applications" in m.name)
+    text = tar.extractfile(entry).read().decode()
+if "%F" not in text or "MimeType=" not in text or "video/mp4" not in text:
+    raise SystemExit(f"desktop entry cannot open files:\n{text}")
 shutil.copy2(images[0], out / f"NexonicClear-{label}.AppImage")
 shutil.copy2(debs[0], out / f"NexonicClear-{label}.deb")
 cli = build / "nexonic-clear-cli"

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { listen } from "@tauri-apps/api/event";
 import { LANGS, lang, setLang, t, type Lang } from "./i18n";
 import "./style.css";
 
@@ -192,6 +193,17 @@ async function takeShared() {
     /* nothing shared */
   }
 }
+/** Desktop: files the app was opened with ("Open with", a second launch). */
+async function takeLaunch() {
+  if (isAndroid) return;
+  try {
+    const paths = await invoke<string[]>("take_launch");
+    if (paths.length) await addPaths(paths);
+  } catch {
+    /* not running inside the app */
+  }
+}
+if (!isAndroid) void listen("open-paths", () => void takeLaunch()).catch(() => { /* not in the app */ });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") void takeShared();
 });
@@ -226,33 +238,55 @@ async function onDrop(ev: DragEvent) {
 }
 
 // ---------- Cleaning and saving ----------
+let stopRequested = false;
+
 async function runClean() {
   if (busy) return;
   const todo = items.filter((i) => i.info);
   if (!todo.length) return;
   busy = true;
+  stopRequested = false;
+  $("stop").hidden = false;
   render();
   let done = 0;
+  let next = 0;
   const old = todo.map((i) => i.outputId).filter((x): x is number => x !== undefined);
   if (old.length) await api.discard(old);
-  for (const item of todo) {
-    status(t("cleaning", { i: ++done, n: todo.length }));
-    item.report = undefined;
-    item.outputId = undefined;
-    item.saved = undefined;
-    item.error = undefined;
-    try {
-      const r = await cleanSource(item.source, options);
-      item.outputId = r.id;
-      item.report = r.report;
-    } catch (e) {
-      item.error = toError(e);
-    }
-    if (done % 10 === 0) render();
+  for (const i of todo) {
+    i.report = undefined;
+    i.outputId = undefined;
+    i.saved = undefined;
+    i.error = undefined;
   }
+  status(t("cleaning", { i: 0, n: todo.length }));
+  // Desktop cleans several files at once from disk; phones hold each file in
+  // memory, so they go one at a time.
+  const workers = isAndroid ? 1 : Math.max(1, Math.min(4, navigator.hardwareConcurrency || 2));
+  const worker = async () => {
+    while (!stopRequested && next < todo.length) {
+      const item = todo[next++];
+      try {
+        const r = await cleanSource(item.source, options);
+        item.outputId = r.id;
+        item.report = r.report;
+      } catch (e) {
+        item.error = toError(e);
+      }
+      done++;
+      status(t("cleaning", { i: done, n: todo.length }));
+      if (done % 10 === 0) render();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(workers, todo.length) }, worker));
   busy = false;
-  const failed = todo.filter((i) => !i.report?.verified).length;
-  status(failed ? t("cleanedSome", { ok: todo.length - failed, bad: failed }) : t("cleanedAll", { n: todo.length }), failed > 0);
+  $("stop").hidden = true;
+  const processed = todo.filter((i) => i.report || i.error);
+  const failed = processed.filter((i) => !i.report?.verified).length;
+  if (processed.length < todo.length) {
+    status(t("stopped", { done: processed.length, n: todo.length }), failed > 0);
+  } else {
+    status(failed ? t("cleanedSome", { ok: todo.length - failed, bad: failed }) : t("cleanedAll", { n: todo.length }), failed > 0);
+  }
   render();
 }
 
@@ -631,8 +665,17 @@ async function selftest() {
     }
     const ok = pathOk && r.report.verified && r.report.image_unchanged && after.blocks.length === 0 && !after.credentials.present &&
       after.details.length === 0 && after.image_fingerprint === before.image_fingerprint && out.length < bytes.length;
+    // Desktop: the self-test launches the app with a file argument ("Open with").
+    let openOk = true;
+    if (!isAndroid) {
+      openOk = false;
+      for (let k = 0; k < 100 && !openOk; k++) {
+        openOk = items.some((i) => i.name === "opened.mp3" && i.info?.format === "mp3");
+        if (!openOk) await new Promise((r) => setTimeout(r, 100));
+      }
+    }
     await addSources([{ name: "selftest.jpg", source: { file: new File([bytes as BlobPart], "selftest.jpg") } }]);
-    await invoke("selftest_done", { passed: ok, detail: `before ${before.blocks.length} blocks, after ${after.blocks.length}; ${bytes.length} -> ${out.length} bytes; path flow ${samplePath ? (pathOk ? "ok" : "failed") : "n/a"}` });
+    await invoke("selftest_done", { passed: ok && openOk, detail: `before ${before.blocks.length} blocks, after ${after.blocks.length}; ${bytes.length} -> ${out.length} bytes; path flow ${samplePath ? (pathOk ? "ok" : "failed") : "n/a"}; open with ${isAndroid ? "n/a" : openOk ? "ok" : "failed"}` });
   } catch (e) {
     await fail(String(e));
   }
@@ -649,6 +692,7 @@ folderBtn.addEventListener("click", pickFolder);
 $("pick").addEventListener("click", pickFiles);
 $("drop").addEventListener("click", (e) => { if ((e.target as HTMLElement).id !== "pick" && !items.length) pickFiles(); });
 $("run").addEventListener("click", runClean);
+$("stop").addEventListener("click", () => { stopRequested = true; });
 $("save-all").addEventListener("click", saveAll);
 $("export-all").addEventListener("click", () => exportReport(items));
 $("clear-list").addEventListener("click", async () => {
@@ -679,6 +723,7 @@ window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) document.bod
 window.addEventListener("drop", onDrop);
 applyStatic();
 render();
+void takeLaunch();
 selftest();
 
 void takeShared();
