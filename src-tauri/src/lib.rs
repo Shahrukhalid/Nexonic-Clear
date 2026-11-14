@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::ipc::{InvokeBody, Request, Response};
+#[cfg(desktop)]
+use tauri::Emitter;
 use tauri::{AppHandle, Manager, State};
 
 #[derive(Default)]
@@ -579,22 +581,69 @@ fn selftest_done(app: AppHandle, passed: bool, detail: String) {
     }
 }
 
+/// Files and folders the app was asked to open: command-line arguments
+/// ("Open with", file managers), a second launch, or macOS Finder.
+#[derive(Default)]
+struct Launch(Mutex<Vec<String>>);
+
+/// Existing paths among command-line arguments; options are ignored.
+fn launch_args(args: impl IntoIterator<Item = String>) -> Vec<String> {
+    args.into_iter()
+        .filter(|a| !a.is_empty() && !a.starts_with('-'))
+        .filter(|a| Path::new(a).exists())
+        .take(20_000)
+        .collect()
+}
+
+/// Returns the queued paths once.
+#[tauri::command]
+fn take_launch(launch: State<'_, Launch>) -> Vec<String> {
+    std::mem::take(&mut *launch.0.lock().unwrap())
+}
+
+#[cfg(desktop)]
+fn deliver(app: &AppHandle, paths: Vec<String>) {
+    if paths.is_empty() {
+        return;
+    }
+    app.state::<Launch>().0.lock().unwrap().extend(paths);
+    let _ = app.emit("open-paths", ());
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // A second launch (another "Open with") hands its files to this window.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        deliver(app, launch_args(argv.into_iter().skip(1)));
+    }));
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Outputs::default())
         .manage(Settings::default())
+        .manage(Launch::default())
         .setup(|app| {
             // Results from a previous session are never reused.
             if let Ok(dir) = output_dir(app.handle()) {
                 let _ = std::fs::remove_dir_all(&dir);
             }
+            #[cfg(desktop)]
+            app.state::<Launch>()
+                .0
+                .lock()
+                .unwrap()
+                .extend(launch_args(std::env::args().skip(1)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             take_shared,
+            take_launch,
             inspect,
             inspect_path,
             set_options,
@@ -611,13 +660,43 @@ pub fn run() {
             selftest_path,
             selftest_done
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("failed to start Nexonic Clear");
+    app.run(|_app, _event| {
+        // macOS: Finder "Open With" and files dropped on the Dock icon.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = _event {
+            let paths = urls
+                .into_iter()
+                .filter_map(|u| u.to_file_path().ok())
+                .map(|p| p.display().to_string());
+            deliver(_app, launch_args(paths));
+        }
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_args_keep_existing_paths_only() {
+        let d = tmp("launch");
+        std::fs::write(d.join("a.mp3"), b"x").unwrap();
+        let file = d.join("a.mp3").display().to_string();
+        let dir = d.display().to_string();
+        let missing = d.join("nope.jpg").display().to_string();
+        let got = launch_args([
+            "--flag".to_string(),
+            file.clone(),
+            missing,
+            String::new(),
+            dir.clone(),
+            "-psn_0_12345".to_string(),
+        ]);
+        assert_eq!(got, vec![file, dir]);
+        std::fs::remove_dir_all(&d).unwrap();
+    }
 
     #[test]
     fn finds_sidecar_next_to_image() {

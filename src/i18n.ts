@@ -83,6 +83,8 @@ const en: Dict = {
   "m.embedded_changed": "Embedded motion-photo or extra-image content changed.",
   "m.motion_xmp_removed": "The motion photo or extra images were kept, but XMP was removed. Some viewers use XMP to find them and may now show only the still image.",
   "m.embedded_removed": "The embedded motion-photo video or extra images were removed.",
+  "stop": "Stop",
+  "stopped": "Stopped: {done} of {n} files processed.",
 };
 
 const es: Dict = {
@@ -244,6 +246,8 @@ const es: Dict = {
   "m.embedded_changed": "Cambió el contenido incrustado de foto en movimiento o de imágenes extra.",
   "m.motion_xmp_removed": "Se conservaron la foto en movimiento o las imágenes extra, pero se eliminó el XMP. Algunos visores usan XMP para encontrarlas y puede que solo muestren la imagen fija.",
   "m.embedded_removed": "Se eliminaron el vídeo de la foto en movimiento o las imágenes extra incrustadas.",
+  "stop": "Detener",
+  "stopped": "Detenido: {done} de {n} archivos procesados.",
 };
 
 const fr: Dict = {
@@ -405,6 +409,8 @@ const fr: Dict = {
   "m.embedded_changed": "Le contenu intégré de photo animée ou d’images supplémentaires a changé.",
   "m.motion_xmp_removed": "La photo animée ou les images supplémentaires ont été conservées, mais le XMP a été supprimé. Certaines visionneuses s’en servent pour les trouver et n’afficheront peut-être que l’image fixe.",
   "m.embedded_removed": "La vidéo de photo animée ou les images supplémentaires intégrées ont été supprimées.",
+  "stop": "Arrêter",
+  "stopped": "Arrêté : {done} fichiers traités sur {n}.",
 };
 
 const de: Dict = {
@@ -566,6 +572,8 @@ const de: Dict = {
   "m.embedded_changed": "Eingebettete Bewegungsfoto- oder Zusatzbild-Inhalte haben sich geändert.",
   "m.motion_xmp_removed": "Das Bewegungsfoto bzw. die Zusatzbilder wurden behalten, aber XMP wurde entfernt. Manche Viewer finden sie über XMP und zeigen nun eventuell nur das Standbild.",
   "m.embedded_removed": "Das eingebettete Bewegungsfoto-Video bzw. die Zusatzbilder wurden entfernt.",
+  "stop": "Anhalten",
+  "stopped": "Angehalten: {done} von {n} Dateien verarbeitet.",
 };
 
 const pt: Dict = {
@@ -727,6 +735,8 @@ const pt: Dict = {
   "m.embedded_changed": "O conteúdo incorporado de foto em movimento ou de imagens extras mudou.",
   "m.motion_xmp_removed": "A foto em movimento ou as imagens extras foram mantidas, mas o XMP foi removido. Alguns visualizadores usam o XMP para encontrá-las e podem mostrar só a imagem estática.",
   "m.embedded_removed": "O vídeo da foto em movimento ou as imagens extras incorporadas foram removidos.",
+  "stop": "Parar",
+  "stopped": "Interrompido: {done} de {n} arquivos processados.",
 };
 
 const ar: Dict = {
@@ -888,6 +898,8 @@ const ar: Dict = {
   "m.embedded_changed": "تغيّر المحتوى المضمّن للصورة المتحركة أو الصور الإضافية.",
   "m.motion_xmp_removed": "أُبقيت الصورة المتحركة أو الصور الإضافية، لكن أُزيل XMP. تستخدم بعض برامج العرض XMP للعثور عليها وقد تعرض الآن الصورة الثابتة فقط.",
   "m.embedded_removed": "أُزيل فيديو الصورة المتحركة أو الصور الإضافية المضمّنة.",
+  "stop": "إيقاف",
+  "stopped": "تم الإيقاف: عولج {done} من {n} ملفات.",
 };
 
 const ur: Dict = {
@@ -1049,6 +1061,8 @@ const ur: Dict = {
   "m.embedded_changed": "موشن فوٹو یا اضافی تصاویر کا شامل مواد تبدیل ہو گیا۔",
   "m.motion_xmp_removed": "موشن فوٹو یا اضافی تصاویر رکھی گئیں، مگر XMP ہٹا دیا گیا۔ کچھ ویورز انہیں ڈھونڈنے کے لیے XMP استعمال کرتے ہیں اور اب صرف ساکن تصویر دکھا سکتے ہیں۔",
   "m.embedded_removed": "موشن فوٹو کی شامل ویڈیو یا اضافی تصاویر ہٹا دی گئیں۔",
+  "stop": "روکیں",
+  "stopped": "روک دیا گیا: {n} میں سے {done} فائلوں پر کارروائی ہوئی۔",
 };
 
 const zh: Dict = {
@@ -1210,6 +1224,8 @@ const zh: Dict = {
   "m.embedded_changed": "内嵌的动态照片或附加图像内容已改变。",
   "m.motion_xmp_removed": "动态照片或附加图像已保留，但 XMP 已移除。部分查看器依靠 XMP 找到它们，现在可能只显示静态图像。",
   "m.embedded_removed": "内嵌的动态照片视频或附加图像已移除。",
+  "stop": "停止",
+  "stopped": "已停止：已处理 {done} / {n} 个文件。",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es, fr, de, pt, ar, ur, zh };
