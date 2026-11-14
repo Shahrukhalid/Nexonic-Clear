@@ -1,0 +1,41 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Nexonic Clear version
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: File type
+      placeholder: JPEG, PNG, WebP, HEIC, AVIF, MP4, MOV, M4A, MP3, WAV or PDF
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error message or report
+      description: The message shown, or the JSON report. Remove anything private first.
+      render: shell
