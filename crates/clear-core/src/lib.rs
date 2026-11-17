@@ -662,6 +662,15 @@ pub fn clean_path(
             }
         };
         if report.verified {
+            // The cleaned file is as private as the original: a photo only its owner
+            // could read must not become readable by everyone (Unix permission bits).
+            #[cfg(unix)]
+            if let Ok(meta) = std::fs::metadata(input) {
+                use std::os::unix::fs::PermissionsExt as _;
+                let mode = meta.permissions().mode() & 0o777;
+                std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode))
+                    .map_err(io)?;
+            }
             std::fs::rename(&tmp, output).map_err(io)?;
         }
         Ok(report)
