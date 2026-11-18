@@ -216,7 +216,7 @@ def main():
     records=rust_notices(args.target,output)+javascript_notices(output)
     if args.maven_manifest:
         records += maven_notices(args.maven_manifest,output)
-    shutil.copyfile(ROOT/'LICENSE',output/'LICENSE-Nexonic-Clear.txt')
+    shutil.copyfile(ROOT/'LICENSE',output/'LICENSE-Scruvix.txt')
     shutil.copyfile(ROOT/'THIRD_PARTY_NOTICES.md',output/'THIRD_PARTY_NOTICES.md')
     (output/'INDEX.json').write_text(json.dumps({'target':args.target,'packages':records},indent=2)+'\n')
     print(f'License gate passed: {len(records)} packages cataloged; original notices and required source archives preserved.')

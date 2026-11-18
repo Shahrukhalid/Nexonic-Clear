@@ -1,4 +1,4 @@
-//! `nexonic-clear-cli`: inspect and clean files from a terminal, a script, a
+//! `scruvix-cli`: inspect and clean files from a terminal, a script, a
 //! file-manager menu or a watched folder. Every result is verified before it
 //! is written; unverified results are never written.
 
@@ -11,13 +11,13 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-const USAGE: &str = "Nexonic Clear command-line tool
+const USAGE: &str = "Scruvix command-line tool
 
 Usage:
-  nexonic-clear-cli inspect [options] <files or folders>...
-  nexonic-clear-cli clean   [options] <files or folders>...
-  nexonic-clear-cli watch   <folder> --out <folder> [options]
-  nexonic-clear-cli integrate install|uninstall [--dry-run]
+  scruvix-cli inspect [options] <files or folders>...
+  scruvix-cli clean   [options] <files or folders>...
+  scruvix-cli watch   <folder> --out <folder> [options]
+  scruvix-cli integrate install|uninstall [--dry-run]
 
 Options:
   -r, --recursive      Include files in subfolders
@@ -382,7 +382,7 @@ fn run_batch(args: &Args, files: &[(PathBuf, Option<PathBuf>)]) -> Vec<Option<En
     let next = AtomicUsize::new(0);
     let done = AtomicUsize::new(0);
     let results: Mutex<Vec<Option<Entry>>> = Mutex::new((0..files.len()).map(|_| None).collect());
-    let cancel_after: Option<usize> = std::env::var("NEXONIC_TEST_CANCEL_AFTER")
+    let cancel_after: Option<usize> = std::env::var("SCRUVIX_TEST_CANCEL_AFTER")
         .ok()
         .and_then(|v| v.parse().ok());
     std::thread::scope(|s| {

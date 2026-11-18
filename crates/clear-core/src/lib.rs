@@ -1,4 +1,4 @@
-//! Nexonic Clear core: inspect and selectively remove metadata and embedded
+//! Scruvix core: inspect and selectively remove metadata and embedded
 //! Content Credentials (C2PA) from images, audio, video and PDF documents
 //! without re-encoding anything.
 //!
@@ -375,7 +375,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::Unsupported => write!(
                 f,
-                "Unsupported file. Nexonic Clear handles JPEG, PNG, WebP, HEIC, AVIF, WAV, MP3, MP4, MOV, M4A and PDF."
+                "Unsupported file. Scruvix handles JPEG, PNG, WebP, HEIC, AVIF, WAV, MP3, MP4, MOV, M4A and PDF."
             ),
             Error::TooLarge => write!(f, "The file is too large."),
             Error::Malformed(m) => write!(f, "The file is damaged: {m}"),
@@ -684,7 +684,7 @@ fn temp_name(output: &std::path::Path) -> std::path::PathBuf {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    output.with_file_name(format!(".{name}.nexonic-tmp-{}", std::process::id()))
+    output.with_file_name(format!(".{name}.scruvix-tmp-{}", std::process::id()))
 }
 
 fn read_small(path: &std::path::Path) -> Result<Vec<u8>> {

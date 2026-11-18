@@ -46,7 +46,7 @@ interface Item {
   info?: Inspection; error?: AppError; report?: CleanReport; outputId?: number; saved?: string;
 }
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 const MIME: Record<Format, string> = {
   jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heif: "image/heic", avif: "image/avif",
   wav: "audio/wav", mp3: "audio/mpeg", mp4: "video/mp4", mov: "video/quicktime", m4a: "audio/mp4", pdf: "application/pdf",
@@ -345,7 +345,7 @@ async function saveAll() {
 // ---------- JSON reports ----------
 function reportFor(list: Item[]) {
   return {
-    generator: "Nexonic Clear",
+    generator: "Scruvix",
     version: VERSION,
     generated_at: new Date().toISOString(),
     options,
@@ -372,7 +372,7 @@ function reportFor(list: Item[]) {
 async function exportReport(list: Item[]) {
   if (!list.length) return;
   const json = JSON.stringify(reportFor(list), null, 2);
-  const name = list.length === 1 ? `${list[0].name.replace(/\.[^.]+$/, "")}-report.json` : "nexonic-clear-report.json";
+  const name = list.length === 1 ? `${list[0].name.replace(/\.[^.]+$/, "")}-report.json` : "scruvix-report.json";
   try {
     let savedName: string | null = null;
     if (isAndroid) {

@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory(prefix="clear-selftest-") as tmp:
     # Also open a file the way "Open with" and file managers do: as an argument.
     opened = pathlib.Path(tmp) / "opened.mp3"
     shutil.copyfile(ROOT / "crates/clear-core/tests/fixtures/media.mp3", opened)
-    env = dict(os.environ, NEXONIC_CLEAR_SELFTEST_DIR=tmp)
+    env = dict(os.environ, SCRUVIX_SELFTEST_DIR=tmp)
     try:
         code = subprocess.run([str(app), str(opened)], env=env, timeout=120).returncode
     except subprocess.TimeoutExpired:

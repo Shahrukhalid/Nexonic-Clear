@@ -1,8 +1,8 @@
-<p align="center"><img src="src-tauri/icons/128x128.png" width="96" alt="Nexonic Clear" /></p>
-<h1 align="center">Nexonic Clear</h1>
+<p align="center"><img src="src-tauri/icons/128x128.png" width="96" alt="Scruvix" /></p>
+<h1 align="center">Scruvix</h1>
 <p align="center">Inspect and remove metadata and Content Credentials from photos, audio, video and PDFs. Offline, lossless, open source.</p>
 
-<p align="center"><img src="docs/screenshot.png" width="860" alt="Nexonic Clear showing a cleaned photo and its verification report" /></p>
+<p align="center"><strong>Inspect. Sanitize. Verify.</strong></p>
 
 ## What it does
 
@@ -35,15 +35,15 @@ Audio and video are cleaned without re-encoding: tags, QuickTime location, make 
 
 ## Command-line tool
 
-`nexonic-clear-cli` uses the same engine and the same verification as the app. It runs on Windows, macOS and Linux.
+`scruvix-cli` uses the same engine and the same verification as the app. It runs on Windows, macOS and Linux.
 
 ```sh
-nexonic-clear-cli inspect photo.heic                   # what is in a file
-nexonic-clear-cli clean -r ~/Pictures/trip -o ~/clean  # clean a folder into another folder
-nexonic-clear-cli clean --in-place --keep c2pa doc.pdf # replace the original, keep credentials
-nexonic-clear-cli clean --json clip.mov > report.json  # JSON report
-nexonic-clear-cli watch ~/Inbox --out ~/Clean          # clean new files as they arrive
-nexonic-clear-cli integrate install                    # add "Clean with Nexonic Clear" to the file manager
+scruvix-cli inspect photo.heic                   # what is in a file
+scruvix-cli clean -r ~/Pictures/trip -o ~/clean  # clean a folder into another folder
+scruvix-cli clean --in-place --keep c2pa doc.pdf # replace the original, keep credentials
+scruvix-cli clean --json clip.mov > report.json  # JSON report
+scruvix-cli watch ~/Inbox --out ~/Clean          # clean new files as they arrive
+scruvix-cli integrate install                    # add "Clean with Scruvix" to the file manager
 ```
 
 - Without `--out` or `--in-place`, cleaned copies are written next to the originals as `name.clean.ext`. Existing files are never replaced unless you pass `--overwrite`.
@@ -52,36 +52,44 @@ nexonic-clear-cli integrate install                    # add "Clean with Nexonic
 - `watch` waits until a new file stops changing, then cleans it into `--out`. Unverified results are never written.
 - `integrate install` adds the menu for the current user: Windows Explorer (files and folders), macOS Finder (Quick Action) and Linux (GNOME Files script and KDE Dolphin service menu). `integrate uninstall` removes it.
 
-On Android, share photos, audio, video or PDFs to Nexonic Clear from any app.
+On Android, share photos, audio, video or PDFs to Scruvix from any app.
 
 ## Download
 
 <p align="center">
-  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Windows-x64-Portable.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Windows-Download-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a>
-  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-AppleSilicon.zip"><img alt="Download for Mac with Apple Silicon" src="https://img.shields.io/badge/Mac_Apple_Silicon-Download-000000?style=for-the-badge&logo=apple&logoColor=white"></a>
-  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-Intel.zip"><img alt="Download for Intel Mac" src="https://img.shields.io/badge/Mac_Intel-Download-555555?style=for-the-badge&logo=apple&logoColor=white"></a>
-  <a href="https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM64.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white"></a>
+  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Windows-x64-Portable.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Windows-Download-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-AppleSilicon.zip"><img alt="Download for Mac with Apple Silicon" src="https://img.shields.io/badge/Mac_Apple_Silicon-Download-000000?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-Intel.zip"><img alt="Download for Intel Mac" src="https://img.shields.io/badge/Mac_Intel-Download-555555?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Android-ARM64.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
 | Platform | Direct download |
 | --- | --- |
-| Windows 10/11 (x64), portable | [NexonicClear-Windows-x64-Portable.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Windows-x64-Portable.zip) |
-| Mac with Apple Silicon (M1 and later) | [NexonicClear-macOS-AppleSilicon.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-AppleSilicon.zip) |
-| Mac with Intel | [NexonicClear-macOS-Intel.zip](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-macOS-Intel.zip) |
-| Android (most phones, ARM64) | [NexonicClear-Android-ARM64.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM64.apk) |
-| Android (older phones, ARM32) | [NexonicClear-Android-ARM32.apk](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Android-ARM32.apk) |
-| Linux x64, AppImage | [NexonicClear-Linux-x64.AppImage](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Linux-x64.AppImage) |
-| Linux x64, Debian and Ubuntu | [NexonicClear-Linux-x64.deb](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-Linux-x64.deb) |
-| Command-line tool | [Windows](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-Windows-x64.zip), [Mac Apple Silicon](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-macOS-AppleSilicon.zip), [Mac Intel](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-macOS-Intel.zip), [Linux](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/NexonicClear-CLI-Linux-x64.zip) |
+| Windows 10/11 (x64), portable | [Scruvix-Windows-x64-Portable.zip](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Windows-x64-Portable.zip) |
+| Mac with Apple Silicon (M1 and later) | [Scruvix-macOS-AppleSilicon.zip](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-AppleSilicon.zip) |
+| Mac with Intel | [Scruvix-macOS-Intel.zip](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-Intel.zip) |
+| Android (most phones, ARM64) | [Scruvix-Android-ARM64.apk](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Android-ARM64.apk) |
+| Android (older phones, ARM32) | [Scruvix-Android-ARM32.apk](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Android-ARM32.apk) |
+| Linux x64, AppImage | [Scruvix-Linux-x64.AppImage](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Linux-x64.AppImage) |
+| Linux x64, Debian and Ubuntu | [Scruvix-Linux-x64.deb](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Linux-x64.deb) |
+| Command-line tool | [Windows](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-Windows-x64.zip), [Mac Apple Silicon](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-macOS-AppleSilicon.zip), [Mac Intel](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-macOS-Intel.zip), [Linux](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-Linux-x64.zip) |
 
-Nothing to install on desktop: unzip and run. Verify downloads with [SHA256SUMS.txt](https://github.com/Shahrukhalid/Nexonic-Clear/releases/latest/download/SHA256SUMS.txt). All versions are on the [Releases](https://github.com/Shahrukhalid/Nexonic-Clear/releases) page.
+Extract the Windows and macOS ZIPs before running the app. On Linux, run the AppImage or install the Debian package. Verify downloads with [SHA256SUMS.txt](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/SHA256SUMS.txt). All versions are on the [Releases](https://github.com/Shahrukhalid/Scruvix/releases) page.
+
+## Upgrading from Nexonic Clear
+
+- **Windows and macOS:** Extract into a new directory and open the Scruvix executable or bundle. Replace the old app after checking your settings. On macOS, close the old app before opening the replacement.
+- **Linux:** Install the replacement package with `sudo apt install ./Scruvix-Linux-x64.deb`. The package replaces the former `nexonic-clear` Debian package. Re-select Scruvix in Open With if your desktop still points to the old launcher. Replace a previous AppImage with the new file.
+- **CLI:** Update scripts to call `scruvix-cli`. To retain a legacy invocation, point a local symlink or command wrapper at the new executable. Run `scruvix-cli integrate install` to update the right-click menus. On Linux and macOS, uninstall customized old menu entries from the older CLI before installing the Scruvix entries.
+- **Android:** The package ID remains `com.nexonic.clear`. GitHub APKs use a development key generated for each build. If Android rejects an update due to a signer mismatch, save any files you need outside the app before uninstalling the old build, then install the new one. For Google Play, install updates from Play with the established app signing identity.
+- [Version 0.4.1 downloads](https://github.com/Shahrukhalid/Scruvix/releases/tag/v0.4.1) are still available under their original filenames. Use the current Downloads table to replace bookmarks for the old versionless asset links.
 
 ## Honest limits
 
-- **Credentials are never forged or repaired.** A signature is shown as intact only when the C2PA validator says so. Trust lists are not bundled, so a valid signature means the file matches its credentials, not that the signer's identity is confirmed.
+- **Credentials are never forged or repaired.** Signature-only validation confirms integrity. Identity trust is reported separately against the bundled official and interim C2PA trust lists.
 - **Content Credentials cover the whole file.** Removing any other metadata while keeping them makes them fail validation. The app warns before and reports after.
 - **Removing metadata does not remove every trace.** Copies elsewhere, cloud provenance records, invisible watermarks and labels added by platforms are not affected. No tool can promise a platform will stop labelling an image.
-- Builds are not code-signed yet. Windows SmartScreen and macOS Gatekeeper will ask for confirmation (on macOS: right-click the app, then Open).
+- Desktop signing and notarization depend on the release configuration. See the release notes for the status of each build.
 
 ## Build from source
 

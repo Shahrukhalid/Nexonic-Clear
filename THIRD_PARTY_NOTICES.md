@@ -1,6 +1,6 @@
 # Third-party notices
 
-Nexonic Clear is MIT licensed. It is built with open-source components whose
+Scruvix is MIT licensed. It is built with open-source components whose
 licenses are preserved in every package:
 
 - Desktop builds: the `notices` folder next to the application (inside the app bundle on macOS).

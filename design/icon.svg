@@ -1,17 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#16a3a0"/>
-      <stop offset="1" stop-color="#2b4fd8"/>
+    <linearGradient id="background" x2="1" y2="1">
+      <stop stop-color="#123b50"/>
+      <stop offset="1" stop-color="#102546"/>
     </linearGradient>
-    <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity=".9"/>
+    <linearGradient id="ribbon" x2="1" y2="1">
+      <stop stop-color="#d8fff5"/>
+      <stop offset="1" stop-color="#68e4c9"/>
     </linearGradient>
   </defs>
-  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
-  <rect x="236" y="268" width="552" height="488" rx="72" fill="none" stroke="#fff" stroke-width="44"/>
-  <path d="M276 690 L430 520 L530 620 L600 552 L748 700" fill="none" stroke="#fff" stroke-width="44" stroke-linejoin="round" stroke-linecap="round"/>
-  <circle cx="640" cy="404" r="48" fill="#fff"/>
-  <path d="M176 846 L848 174" stroke="url(#sweep)" stroke-width="40" stroke-linecap="round"/>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#background)"/>
+  <path d="M709 300H494c-110 0-177 55-177 135 0 62 45 104 119 123l137 35c36 9 52 24 52 45 0 29-33 48-84 48H306v89h234c113 0 183-58 183-140 0-64-41-108-119-128l-137-35c-34-9-52-22-52-42 0-25 29-41 79-41h215z" fill="url(#ribbon)"/>
+  <path d="m660 298 48-69v69zM306 685l-48 69v-69z" fill="#68e4c9"/>
 </svg>

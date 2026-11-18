@@ -3,14 +3,14 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const BIN: &str = env!("CARGO_BIN_EXE_nexonic-clear-cli");
+const BIN: &str = env!("CARGO_BIN_EXE_scruvix-cli");
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../clear-core/tests/fixtures")
 }
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("nexonic-cli-{}-{name}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("scruvix-cli-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -173,7 +173,7 @@ fn cancelling_stops_before_the_remaining_files() {
             out.to_str().unwrap(),
             d.to_str().unwrap(),
         ])
-        .env("NEXONIC_TEST_CANCEL_AFTER", "2")
+        .env("SCRUVIX_TEST_CANCEL_AFTER", "2")
         .output()
         .unwrap();
     assert_eq!(
@@ -244,6 +244,16 @@ fn watch_cleans_new_files_into_the_output_folder() {
 #[test]
 fn integrate_installs_and_removes_file_manager_menus() {
     let home = tmp("home");
+    let legacy = home.join(".local/share/nautilus/scripts/Clean with Nexonic Clear");
+    let custom = home.join(".local/share/kio/servicemenus/nexonic-clear.desktop");
+    std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(custom.parent().unwrap()).unwrap();
+    std::fs::write(
+        &legacy,
+        "# Clean with Nexonic Clear: writes verified .clean copies",
+    )
+    .unwrap();
+    std::fs::write(&custom, "[Desktop Entry]\nName=Custom action\n").unwrap();
     let o = Command::new(BIN)
         .args(["integrate", "install"])
         .env("HOME", &home)
@@ -256,10 +266,12 @@ fn integrate_installs_and_removes_file_manager_menus() {
         "{}",
         String::from_utf8_lossy(&o.stderr)
     );
-    let script = home.join(".local/share/nautilus/scripts/Clean with Nexonic Clear");
-    let menu = home.join(".local/share/kio/servicemenus/nexonic-clear.desktop");
+    assert!(!legacy.exists());
+    assert!(custom.exists());
+    let script = home.join(".local/share/nautilus/scripts/Clean with Scruvix");
+    let menu = home.join(".local/share/kio/servicemenus/scruvix.desktop");
     let body = std::fs::read_to_string(&script).unwrap();
-    assert!(body.contains("nexonic-clear-cli' clean -r"));
+    assert!(body.contains("scruvix-cli' clean -r"));
     assert!(std::fs::read_to_string(&menu)
         .unwrap()
         .contains("MimeType=image/jpeg;"));
@@ -291,4 +303,5 @@ fn integrate_installs_and_removes_file_manager_menus() {
         .unwrap();
     assert_eq!(o.status.code(), Some(0));
     assert!(!script.exists() && !menu.exists());
+    assert!(custom.exists());
 }

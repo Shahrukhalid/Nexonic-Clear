@@ -1,19 +1,23 @@
-Nexonic Clear: inspect and remove metadata and Content Credentials from photos, audio, video and PDFs, fully offline.
+Scruvix, formerly Nexonic Clear. Inspect. Sanitize. Verify.
+
+Use Scruvix to inspect and remove metadata and Content Credentials from photos, audio, video and PDFs, fully offline.
 
 **Downloads**
 
 | Platform | File |
 | --- | --- |
-| Windows 10/11 (x64), portable | `NexonicClear-Windows-x64-Portable.zip` |
-| macOS Apple Silicon | `NexonicClear-macOS-AppleSilicon.zip` |
-| macOS Intel | `NexonicClear-macOS-Intel.zip` |
-| Android ARM64 (most phones) | `NexonicClear-Android-ARM64.apk` |
-| Android ARM32 (older phones) | `NexonicClear-Android-ARM32.apk` |
-| Linux x64 | `NexonicClear-Linux-x64.AppImage` or `NexonicClear-Linux-x64.deb` |
-| Command-line tool | `NexonicClear-CLI-<platform>.zip` (Windows, macOS, Linux) |
+| Windows 10/11 (x64), portable | `Scruvix-Windows-x64-Portable.zip` |
+| macOS Apple Silicon | `Scruvix-macOS-AppleSilicon.zip` |
+| macOS Intel | `Scruvix-macOS-Intel.zip` |
+| Android ARM64 (most phones) | `Scruvix-Android-ARM64.apk` |
+| Android ARM32 (older phones) | `Scruvix-Android-ARM32.apk` |
+| Linux x64 | `Scruvix-Linux-x64.AppImage` or `Scruvix-Linux-x64.deb` |
+| Command-line tool | `Scruvix-CLI-<platform>.zip` (Windows, macOS, Linux) |
 
 Verify downloads with `SHA256SUMS.txt`.
 
-Every package in this release passed the engine test suite and a native self-test on its platform: the real app inspected a genuinely signed C2PA image, removed all metadata over its own interface, and verified the image data was unchanged.
+Desktop package validation exercises the app with a signed C2PA image and verifies that cleaning preserves image data. Android exercises the app on an x86_64 emulator and checks the signed ARM packages for ABI, native alignment, and bundled notices.
 
-Builds are code-signed and notarized only when signing certificates are configured for the release; otherwise Windows SmartScreen and macOS Gatekeeper will ask for confirmation. Android APKs use a development signing certificate, so uninstall before installing a future store-signed version.
+Windows and macOS signing depends on the configured certificates and notarization credentials. GitHub APKs are development-signed per build. If Android rejects an update due to a certificate mismatch, export files you need before uninstalling the previous app. The Android package ID is retained for the existing Play channel, which relies on its established app signing identity.
+
+See [upgrade instructions](https://github.com/Shahrukhalid/Scruvix#upgrading-from-nexonic-clear) for desktop, CLI and Linux package changes.

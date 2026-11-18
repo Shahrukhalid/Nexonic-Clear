@@ -19,7 +19,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Nexonic Clear version
+      label: Scruvix version
     validations:
       required: true
   - type: input

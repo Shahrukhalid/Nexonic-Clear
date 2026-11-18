@@ -556,10 +556,10 @@ fn discard(ids: Vec<u64>, outputs: State<'_, Outputs>) {
 
 // Native acceptance test: when a sample is placed in the self-test folder, the
 // real interface runs the full inspect → clean → verify path over IPC and
-// records the outcome. Desktop CI points NEXONIC_CLEAR_SELFTEST_DIR at a
+// records the outcome. Desktop CI points SCRUVIX_SELFTEST_DIR at a
 // temporary folder; Android CI uses the app's private data folder.
 fn selftest_dir(app: &AppHandle) -> Option<PathBuf> {
-    let dir = match std::env::var_os("NEXONIC_CLEAR_SELFTEST_DIR") {
+    let dir = match std::env::var_os("SCRUVIX_SELFTEST_DIR") {
         Some(d) => PathBuf::from(d),
         None => app.path().app_data_dir().ok()?.join("selftest"),
     };
@@ -586,7 +586,7 @@ fn selftest_done(app: AppHandle, passed: bool, detail: String) {
         let _ = std::fs::write(dir.join("result.json"), result.to_string());
         let _ = std::fs::remove_file(dir.join("sample.jpg"));
     }
-    if std::env::var_os("NEXONIC_CLEAR_SELFTEST_DIR").is_some() {
+    if std::env::var_os("SCRUVIX_SELFTEST_DIR").is_some() {
         app.exit(if passed { 0 } else { 1 });
     }
 }
@@ -676,7 +676,7 @@ pub fn run() {
             selftest_done
         ])
         .build(tauri::generate_context!())
-        .expect("failed to start Nexonic Clear");
+        .expect("failed to start Scruvix");
     app.run(|_app, _event| {
         // macOS: Finder "Open With" and files dropped on the Dock icon.
         #[cfg(target_os = "macos")]
@@ -795,7 +795,7 @@ mod tests {
 mod shared_tests {
     #[test]
     fn shared_files_are_returned_once() {
-        let cache = std::env::temp_dir().join(format!("nexonic-share-{}", std::process::id()));
+        let cache = std::env::temp_dir().join(format!("scruvix-share-{}", std::process::id()));
         std::fs::create_dir_all(cache.join("shared")).unwrap();
         std::fs::write(cache.join("shared/a.jpg"), b"x").unwrap();
         std::fs::write(cache.join("shared/b.mp4"), b"y").unwrap();

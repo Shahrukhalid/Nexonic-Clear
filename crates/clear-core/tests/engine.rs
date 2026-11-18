@@ -31,7 +31,7 @@ fn sign(data: &[u8], mime: &str, ai: bool) -> Vec<u8> {
         r#","digitalSourceType":"http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture""#
     };
     let json = format!(
-        r#"{{"claim_generator_info":[{{"name":"Nexonic Clear tests","version":"1"}}],"title":"fixture","assertions":[{{"label":"c2pa.actions","data":{{"actions":[{{"action":"c2pa.created"{dst}}}]}}}}]}}"#
+        r#"{{"claim_generator_info":[{{"name":"Scruvix tests","version":"1"}}],"title":"fixture","assertions":[{{"label":"c2pa.actions","data":{{"actions":[{{"action":"c2pa.created"{dst}}}]}}}}]}}"#
     );
     let mut b = c2pa::Builder::from_context(c2pa::Context::new())
         .with_definition(json.as_str())

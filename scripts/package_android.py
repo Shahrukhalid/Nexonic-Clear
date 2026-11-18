@@ -3,6 +3,7 @@ ABI contents, notices and 16 KiB native alignment."""
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -20,8 +21,11 @@ keystore = ROOT / "test-results/development-signing.jks"
 if not keystore.exists():
     subprocess.run(["keytool", "-genkeypair", "-noprompt", "-keystore", keystore, "-alias", "nexonicdev",
                     "-keyalg", "RSA", "-keysize", "3072", "-validity", "3650", "-storepass", "android",
-                    "-keypass", "android", "-dname", "CN=Nexonic Clear Development, O=Nexonic Technologies"], check=True)
-version = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())["version"]
+                    "-keypass", "android", "-dname", "CN=Scruvix Development, O=Nexonic Technologies"], check=True)
+config = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())
+version = config["version"]
+major, minor, patch = map(int, version.split("-", 1)[0].split("."))
+version_code = major * 1_000_000 + minor * 1_000 + patch
 out = ROOT / "release-assets"
 out.mkdir(exist_ok=True)
 apks = ROOT / "src-tauri/gen/android/app/build/outputs/apk"
@@ -30,12 +34,19 @@ for abi, label, variant in [("arm64-v8a", "ARM64", "arm64"), ("armeabi-v7a", "AR
     found = list(apks.glob(f"{variant}/release/*.apk"))
     if len(found) != 1:
         raise SystemExit(f"Expected one {abi} release APK, found {found}")
-    name = f"NexonicClear-Android-{label}.apk"
+    name = f"Scruvix-Android-{label}.apk"
     aligned = out / name
     subprocess.run([tools / "zipalign", "-f", "-P", "16", "4", found[0], aligned], check=True)
     subprocess.run([tools / "apksigner", "sign", "--ks", keystore, "--ks-pass", "pass:android",
                     "--ks-key-alias", "nexonicdev", "--key-pass", "pass:android", aligned], check=True)
-    subprocess.run([tools / "apksigner", "verify", aligned], check=True)
+    subprocess.run([tools / "apksigner", "verify", "--print-certs", aligned], check=True)
+    badging = subprocess.check_output([tools / "aapt", "dump", "badging", aligned], text=True)
+    package = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'",
+                        badging, re.MULTILINE)
+    if not package or package.groups() != (config["identifier"], str(version_code), version):
+        raise SystemExit(f"{name}: unexpected package identity or version")
+    if f"application-label:'{config['productName']}'" not in badging:
+        raise SystemExit(f"{name}: unexpected launcher label")
     subprocess.run([tools / "zipalign", "-c", "-P", "16", "4", aligned], check=True)
     with zipfile.ZipFile(aligned) as archive:
         names = archive.namelist()
