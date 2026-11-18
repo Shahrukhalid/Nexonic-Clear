@@ -2,6 +2,7 @@
 import hashlib
 import json
 import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -16,13 +17,14 @@ if not (notices / "INDEX.json").is_file():
     raise SystemExit("Collect dependency notices first")
 build = ROOT / "target/release"
 readme = (
-    "Nexonic Clear {version} - {label}\n\n"
+    "Scruvix {version} - {label}\n\n"
     "Portable: no installer and no setup. Works fully offline.\n"
     "{run}\n\n"
     "Third-party licenses are in the notices folder.\n"
-    "https://github.com/Shahrukhalid/Nexonic-Clear\n"
+    "https://github.com/Shahrukhalid/Scruvix\n"
 )
-version = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())["version"]
+config = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())
+version = config["version"]
 
 
 def selftest(executable):
@@ -31,40 +33,44 @@ def selftest(executable):
 
 if platform.system() == "Windows":
     label = "Windows-x64"
-    exe = build / "nexonic-clear.exe"
+    exe = build / "scruvix.exe"
     selftest(exe)
     with tempfile.TemporaryDirectory() as tmp:
-        folder = Path(tmp) / "NexonicClear"
+        folder = Path(tmp) / "Scruvix"
         folder.mkdir()
-        shutil.copyfile(exe, folder / "NexonicClear.exe")
+        shutil.copyfile(exe, folder / "Scruvix.exe")
         shutil.copytree(notices, folder / "notices")
         (folder / "README.txt").write_text(readme.format(version=version, label=label,
-            run="Extract the folder, then open NexonicClear.exe.\nRequires the Microsoft Edge WebView2 Runtime, included with Windows 10 and 11.\nThis build is not code-signed, so SmartScreen may ask for confirmation."))
-        selftest(folder / "NexonicClear.exe")
-        shutil.make_archive(str(out / f"NexonicClear-{label}-Portable"), "zip", tmp)
+            run="Extract the folder, then open Scruvix.exe.\nRequires the Microsoft Edge WebView2 Runtime, included with Windows 10 and 11.\nSmartScreen may ask for confirmation when publisher signing is unavailable."))
+        selftest(folder / "Scruvix.exe")
+        shutil.make_archive(str(out / f"Scruvix-{label}-Portable"), "zip", tmp)
 else:
     label = "macOS-" + ("AppleSilicon" if platform.machine() == "arm64" else "Intel")
-    app = build / "bundle/macos/Nexonic Clear.app"
+    app = build / "bundle/macos/Scruvix.app"
     if not (app / "Contents/Resources/notices/INDEX.json").is_file():
         raise SystemExit("App bundle is missing its notices")
+    with (app / "Contents/Info.plist").open("rb") as plist:
+        info = plistlib.load(plist)
+    if info.get("CFBundleIdentifier") != config["identifier"] or info.get("CFBundleShortVersionString") != version:
+        raise SystemExit("Unexpected macOS bundle identifier or version")
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
-    selftest(app / "Contents/MacOS/nexonic-clear")
+    selftest(app / "Contents/MacOS/scruvix")
     subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app),
-                    str(out / f"NexonicClear-{label}.zip")], check=True)
+                    str(out / f"Scruvix-{label}.zip")], check=True)
 
 # Command-line tool: smoke-test it on a real file, then ship it as its own zip.
-cli = build / ("nexonic-clear-cli.exe" if platform.system() == "Windows" else "nexonic-clear-cli")
+cli = build / ("scruvix-cli.exe" if platform.system() == "Windows" else "scruvix-cli")
 if cli.is_file():
     sample = ROOT / "crates/clear-core/tests/fixtures/media.mp4"
     subprocess.run([str(cli), "inspect", "--json", "-q", str(sample)], check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory() as tmp:
-        folder = Path(tmp) / "nexonic-clear-cli"
+        folder = Path(tmp) / "scruvix-cli"
         folder.mkdir()
         shutil.copy2(cli, folder / cli.name)
         shutil.copytree(notices, folder / "notices")
         (folder / "README.txt").write_text(readme.format(version=version, label=label + " command-line tool",
-            run=f"Run {cli.name} --help for usage. `{cli.name} integrate install` adds \"Clean with Nexonic Clear\" to the file manager menu."))
-        shutil.make_archive(str(out / f"NexonicClear-CLI-{label}"), "zip", tmp)
+            run=f"Run {cli.name} --help for usage. `{cli.name} integrate install` adds \"Clean with Scruvix\" to the file manager menu."))
+        shutil.make_archive(str(out / f"Scruvix-CLI-{label}"), "zip", tmp)
 
 assets = [{"name": p.name, "bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
           for p in sorted(out.glob(f"*{label}*.zip"))]

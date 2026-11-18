@@ -1,4 +1,4 @@
-# Contributing to Nexonic Clear
+# Contributing to Scruvix
 
 Bug reports, ideas, documentation fixes and code are all welcome.
 
@@ -13,7 +13,7 @@ Security problems: report them privately as described in [SECURITY.md](SECURITY.
 1. Fork the repository and create a branch from `main`.
 2. Keep the change focused on one thing, and add or update tests when behaviour changes. New features need tests on real files.
 3. Run the checks:
-   - `NEXONIC_REQUIRE_FFMPEG=1 cargo test --workspace` (needs ffmpeg)
+   - `SCRUVIX_REQUIRE_FFMPEG=1 cargo test --workspace` (needs ffmpeg)
    - `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`
    - `npx tsc --noEmit` and `node scripts/check_i18n.mjs`
 4. Open a pull request that explains what changed and how you tested it.

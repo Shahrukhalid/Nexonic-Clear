@@ -3,10 +3,10 @@ name = "clear-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Nexonic Clear command-line tool: inspect and remove metadata with verification"
+description = "Scruvix command-line tool: inspect and remove metadata with verification"
 
 [[bin]]
-name = "nexonic-clear-cli"
+name = "scruvix-cli"
 path = "src/main.rs"
 
 [dependencies]

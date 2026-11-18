@@ -5,6 +5,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag matching the version on main. Leave blank for validation only."
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -70,7 +75,7 @@ jobs:
         if: runner.os == 'macOS' && env.HAS_APPLE_IDENTITY == 'true'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: codesign --force --sign "$APPLE_SIGNING_IDENTITY" --options runtime --timestamp target/release/nexonic-clear-cli
+        run: codesign --force --sign "$APPLE_SIGNING_IDENTITY" --options runtime --timestamp target/release/scruvix-cli
       - name: Sign Windows executables
         if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
         shell: pwsh
@@ -81,7 +86,7 @@ jobs:
           $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
-          foreach ($exe in "target\release\nexonic-clear.exe", "target\release\nexonic-clear-cli.exe") {
+          foreach ($exe in "target\release\scruvix.exe", "target\release\scruvix-cli.exe") {
             & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe
             if ($LASTEXITCODE -ne 0) { exit 1 }
             & $signtool.FullName verify /pa $exe
@@ -119,8 +124,19 @@ jobs:
       - run: npm run tauri -- build --bundles appimage,deb --ci
       - run: cargo build -p clear-cli --release --locked
       - name: Native self-test (real interface and IPC)
-        run: xvfb-run -a python3 scripts/selftest.py target/release/nexonic-clear
+        run: xvfb-run -a python3 scripts/selftest.py target/release/scruvix
       - run: python3 scripts/package_linux.py
+      - name: Upgrade the previous Debian package and smoke-test the installed app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.4.1 --pattern NexonicClear-Linux-x64.deb --dir "$RUNNER_TEMP"
+          sudo apt-get install -y "$RUNNER_TEMP/NexonicClear-Linux-x64.deb"
+          sudo apt-get install -y "$PWD/release-assets/Scruvix-Linux-x64.deb"
+          test "$(dpkg-query -W -f='${Status}' scruvix)" = "install ok installed"
+          test "$(dpkg-query -W -f='${db:Status-Status}' nexonic-clear 2>/dev/null || true)" != installed
+          xvfb-run -a python3 scripts/selftest.py /usr/bin/scruvix
+          sudo apt-get remove -y scruvix
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-linux
@@ -210,7 +226,7 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
-          avd-name: NexonicClearTest
+          avd-name: ScruvixTest
           disable-animations: true
           emulator-boot-timeout: 600
           script: bash scripts/android_selftest.sh
@@ -243,7 +259,7 @@ jobs:
           aab=$(find src-tauri/gen/android/app/build/outputs/bundle -name '*release*.aab' | head -n 1)
           jarsigner -verify "$aab"
           version=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
-          cp "$aab" "release-assets/NexonicClear-$version-Android-GooglePlay.aab"
+          cp "$aab" "release-assets/Scruvix-$version-Android-GooglePlay.aab"
           python3 - <<'PY'
           import hashlib, json
           from pathlib import Path
@@ -260,10 +276,25 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
           retention-days: 14
+  validate:
+    name: Validate packages
+    needs: [desktop, linux, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: packages-*
+          path: release-assets
+          merge-multiple: true
+      - run: python3 scripts/release_checksums.py
   publish:
     name: Publish release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [desktop, linux, android]
+    if: >-
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+       github.actor == github.repository_owner && inputs.release_tag != '')
+    needs: [validate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -278,9 +309,21 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.release_tag || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          version=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
+          test "$TAG" = "v$version"
           pre=""; [[ "$TAG" == *-* ]] && pre="--prerelease"
           shopt -s nullglob
           files=(release-assets/*.zip release-assets/*.apk release-assets/*.aab release-assets/*.AppImage release-assets/*.deb release-assets/SHA256SUMS.txt)
-          gh release create "$TAG" "${files[@]}" --verify-tag $pre --title "Nexonic Clear $TAG" --notes-file docs/RELEASE_NOTES.md
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+              echo "Tag already exists: $TAG"
+              exit 1
+            fi
+            target=(--target "$GITHUB_SHA")
+          else
+            target=(--verify-tag)
+          fi
+          gh release create "$TAG" "${files[@]}" "${target[@]}" $pre --title "Scruvix $TAG" --notes-file docs/RELEASE_NOTES.md

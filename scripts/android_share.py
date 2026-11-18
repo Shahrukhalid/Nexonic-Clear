@@ -56,7 +56,7 @@ KOTLIN = '''
                 while (target.exists()) target = File(dir, "${n++}-$name")
                 contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it) } }
             } catch (e: Exception) {
-                android.util.Log.w("NexonicClear", "Could not receive a shared file", e)
+                android.util.Log.w("Scruvix", "Could not receive a shared file", e)
             }
         }
         intent.action = null

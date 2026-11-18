@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "clear-cli"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "clear-core",
  "ctrlc",
@@ -891,7 +891,7 @@ dependencies = [
 
 [[package]]
 name = "clear-core"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "c2pa",
  "image",
@@ -3137,20 +3137,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
-name = "nexonic-clear"
-version = "0.4.1"
-dependencies = [
- "clear-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-single-instance",
-]
-
-[[package]]
 name = "nix"
 version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4504,6 +4490,20 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "scruvix"
+version = "0.5.0"
+dependencies = [
+ "clear-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-single-instance",
+]
 
 [[package]]
 name = "sec1"

@@ -16,7 +16,7 @@ Add these under **Settings → Secrets and variables → Actions**.
 | `WINDOWS_CERTIFICATE` | The code-signing certificate as a base64 `.pfx` (`base64 -w0 cert.pfx`) |
 | `WINDOWS_CERTIFICATE_PASSWORD` | The `.pfx` password |
 
-Both `nexonic-clear.exe` and `nexonic-clear-cli.exe` are signed with SHA-256 and
+Both `scruvix.exe` and `scruvix-cli.exe` are signed with SHA-256 and
 a timestamp, then checked with `signtool verify`. A certificate kept in a
 hardware token or a cloud signing service (for example SignPath) needs that
 service's own signing step in place of the `.pfx` step.
@@ -44,7 +44,7 @@ notarization; the command-line tool is signed with the same identity.
 | `ANDROID_KEY_ALIAS` | Key alias |
 | `ANDROID_KEY_PASSWORD` | Key password |
 
-The workflow builds `NexonicClear-<version>-Android-GooglePlay.aab`, signed
+The workflow builds `Scruvix-<version>-Android-GooglePlay.aab`, signed
 with the upload key. Enrol the app in Play App Signing; Google then signs what
 users install. Upload the AAB in the Play Console (internal testing first).
 The APKs on GitHub keep their own signing, so users moving between the two
@@ -60,5 +60,7 @@ contains the app and its notices. No secrets are needed.
 
 1. Merge to `main` with every check green.
 2. Bump the version in `Cargo.toml`, `package.json`, `src-tauri/tauri.conf.json` and `src/main.ts`.
-3. Push the tag `vX.Y.Z`. The publish job refuses to release unless every
-   platform's validation file matches the uploaded files.
+3. Push the tag `vX.Y.Z`, or as the repository owner run the Packages workflow
+   on `main` with that exact tag as its release input. The manual run creates
+   the tag at the tested commit when publication succeeds. The publish job
+   requires all platform packages and validates their checksums before upload.

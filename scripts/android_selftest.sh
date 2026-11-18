@@ -24,5 +24,5 @@ for i in $(seq 1 60); do
   done
   sleep 2
 done
-adb logcat -d | grep -iE "nexonic|tauri|panic|chromium" | tail -80
+adb logcat -d | grep -iE "scruvix|com\.nexonic\.clear|tauri|panic|chromium" | tail -80
 echo "No self-test result" && exit 1

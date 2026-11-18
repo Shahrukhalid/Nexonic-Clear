@@ -10,7 +10,21 @@ for label in ["Windows-x64", "macOS-AppleSilicon", "macOS-Intel", "Linux-x64", "
     records += json.loads((out / f"VALIDATION-{label}.json").read_text())["assets"]
 payload = sorted(p.name for p in out.iterdir() if p.suffix in SUFFIXES)
 names = sorted(r["name"] for r in records)
-if names != payload or len(payload) < 9:
+version = json.loads(Path("src-tauri/tauri.conf.json").read_text())["version"]
+expected = {
+    "Scruvix-Windows-x64-Portable.zip",
+    "Scruvix-macOS-AppleSilicon.zip",
+    "Scruvix-macOS-Intel.zip",
+    "Scruvix-Linux-x64.AppImage",
+    "Scruvix-Linux-x64.deb",
+    "Scruvix-Android-ARM64.apk",
+    "Scruvix-Android-ARM32.apk",
+    *(f"Scruvix-CLI-{label}.zip" for label in (
+        "Windows-x64", "macOS-AppleSilicon", "macOS-Intel", "Linux-x64"
+    )),
+}
+optional = {f"Scruvix-{version}-Android-GooglePlay.aab"}
+if names != payload or not expected <= set(payload) <= expected | optional:
     raise SystemExit(f"Unexpected release payload: {payload} (validated: {names})")
 for r in records:
     p = out / r["name"]

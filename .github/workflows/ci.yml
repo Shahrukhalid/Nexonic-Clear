@@ -35,10 +35,10 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
         env:
-          NEXONIC_REQUIRE_FFMPEG: '1'
+          SCRUVIX_REQUIRE_FFMPEG: '1'
       - run: npm run tauri -- build --no-bundle --ci
       - name: Native self-test (real interface and IPC)
-        run: xvfb-run -a python3 scripts/selftest.py target/release/nexonic-clear
+        run: xvfb-run -a python3 scripts/selftest.py target/release/scruvix
       - run: npm audit --omit=dev --audit-level=high
   fuzz:
     name: Coverage-guided fuzzing

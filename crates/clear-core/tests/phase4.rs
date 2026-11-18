@@ -1,6 +1,6 @@
 //! Audio, video, HEIC/AVIF and PDF on real files made with ffmpeg, libheif,
 //! libavif and qpdf (see THIRD_PARTY_NOTICES). Decoded media is compared with
-//! ffmpeg before and after cleaning; CI sets NEXONIC_REQUIRE_FFMPEG=1 so the
+//! ffmpeg before and after cleaning; CI sets SCRUVIX_REQUIRE_FFMPEG=1 so the
 //! comparison can't be skipped there.
 
 use clear_core::{
@@ -65,7 +65,7 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
 }
 
 fn tmp(name: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("nexonic-p4-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("scruvix-p4-{}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
     d.join(name)
 }
@@ -100,7 +100,7 @@ fn decoded(data: &[u8], ext: &str) -> Option<String> {
         ),
         Err(_) => {
             assert!(
-                std::env::var("NEXONIC_REQUIRE_FFMPEG").is_err(),
+                std::env::var("SCRUVIX_REQUIRE_FFMPEG").is_err(),
                 "ffmpeg is required"
             );
             None
@@ -278,7 +278,7 @@ fn sign(data: &[u8], mime: &str) -> Vec<u8> {
         None,
     )
     .unwrap();
-    let json = r#"{"claim_generator_info":[{"name":"Nexonic Clear tests","version":"1"}],"title":"fixture","assertions":[{"label":"c2pa.actions","data":{"actions":[{"action":"c2pa.created","digitalSourceType":"http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"}]}}]}"#;
+    let json = r#"{"claim_generator_info":[{"name":"Scruvix tests","version":"1"}],"title":"fixture","assertions":[{"label":"c2pa.actions","data":{"actions":[{"action":"c2pa.created","digitalSourceType":"http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"}]}}]}"#;
     let mut b = c2pa::Builder::from_context(c2pa::Context::new())
         .with_definition(json)
         .unwrap();
@@ -352,7 +352,7 @@ fn path_api_matches_memory_and_never_writes_unverified() {
                     .unwrap()
                     .file_name()
                     .to_string_lossy()
-                    .contains("nexonic-tmp")
+                    .contains("scruvix-tmp")
             })
             .count();
         assert_eq!(leftovers, 0);

@@ -1,15 +1,16 @@
-//! "Clean with Nexonic Clear" in the file manager's right-click menu, for the
+//! "Clean with Scruvix" in the file manager's right-click menu, for the
 //! current user only (no administrator rights needed):
 //! - Windows Explorer: per-extension and folder verbs under HKCU\Software\Classes;
 //! - macOS Finder: a Quick Action in ~/Library/Services;
 //! - Linux: a Nautilus (GNOME Files) script and a Dolphin (KDE) service menu.
 //!
-//! The menu runs `nexonic-clear-cli clean --pause` on the selection, which
+//! The menu runs `scruvix-cli clean --pause` on the selection, which
 //! writes verified `.clean` copies next to the originals.
 
 use std::path::{Path, PathBuf};
 
-const LABEL: &str = "Clean with Nexonic Clear";
+const LABEL: &str = "Clean with Scruvix";
+const LEGACY_LABEL: &str = "Clean with Nexonic Clear";
 
 pub fn run(args: &[PathBuf], dry_run: bool) -> i32 {
     let action = args.first().and_then(|a| a.to_str()).unwrap_or_default();
@@ -94,6 +95,47 @@ fn remove(path: &Path, dry: bool, log: &mut Vec<String>) {
     }
 }
 
+fn legacy_file(path: &Path, marker: &str) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file())
+        && std::fs::read_to_string(path).is_ok_and(|text| text.contains(marker))
+}
+
+fn remove_legacy_linux(data: &Path, dry: bool, log: &mut Vec<String>) {
+    let script = data.join("nautilus/scripts").join(LEGACY_LABEL);
+    if legacy_file(
+        &script,
+        "# Clean with Nexonic Clear: writes verified .clean copies",
+    ) {
+        remove(&script, dry, log);
+    }
+    let menu = data.join("kio/servicemenus/nexonic-clear.desktop");
+    if legacy_file(&menu, "Name=Clean with Nexonic Clear\n") {
+        remove(&menu, dry, log);
+    }
+}
+
+fn remove_legacy_macos(services: &Path, dry: bool, log: &mut Vec<String>) {
+    let workflow = services.join(format!("{LEGACY_LABEL}.workflow"));
+    let contents = workflow.join("Contents");
+    if !std::fs::symlink_metadata(&workflow).is_ok_and(|meta| meta.is_dir())
+        || !std::fs::symlink_metadata(&contents).is_ok_and(|meta| meta.is_dir())
+    {
+        return;
+    }
+    let info = contents.join("Info.plist");
+    let document = contents.join("document.wflow");
+    if legacy_file(&info, "<string>Clean with Nexonic Clear</string>")
+        && legacy_file(&document, "nexonic-clear-last.txt")
+    {
+        remove(&document, dry, log);
+        remove(&info, dry, log);
+        if !dry {
+            let _ = std::fs::remove_dir(&contents);
+            let _ = std::fs::remove_dir(&workflow);
+        }
+    }
+}
+
 fn sh_quote(p: &Path) -> String {
     format!("'{}'", p.display().to_string().replace('\'', r"'\''"))
 }
@@ -104,11 +146,12 @@ pub(crate) fn linux(exe: &Path, install: bool, dry: bool) -> Result<Vec<String>,
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".local/share"));
     let script = data.join("nautilus/scripts").join(LABEL);
-    let dolphin = data.join("kio/servicemenus/nexonic-clear.desktop");
+    let dolphin = data.join("kio/servicemenus/scruvix.desktop");
     let mut log = Vec::new();
     if !install {
         remove(&script, dry, &mut log);
         remove(&dolphin, dry, &mut log);
+        remove_legacy_linux(&data, dry, &mut log);
         return Ok(log);
     }
     let terminal = "x-terminal-emulator";
@@ -127,6 +170,7 @@ pub(crate) fn linux(exe: &Path, install: bool, dry: bool) -> Result<Vec<String>,
         exe = sh_quote(exe)
     );
     write(&dolphin, &desktop, true, dry, &mut log)?;
+    remove_legacy_linux(&data, dry, &mut log);
     Ok(log)
 }
 
@@ -138,12 +182,12 @@ fn xml(s: &str) -> String {
 }
 
 pub(crate) fn macos(exe: &Path, install: bool, dry: bool) -> Result<Vec<String>, String> {
-    let dir = home()?
-        .join("Library/Services")
-        .join(format!("{LABEL}.workflow"));
+    let services = home()?.join("Library/Services");
+    let dir = services.join(format!("{LABEL}.workflow"));
     let mut log = Vec::new();
     if !install {
         remove(&dir, dry, &mut log);
+        remove_legacy_macos(&services, dry, &mut log);
         return Ok(log);
     }
     let info = format!(
@@ -177,7 +221,7 @@ pub(crate) fn macos(exe: &Path, install: bool, dry: bool) -> Result<Vec<String>,
 "#
     );
     let command = xml(&format!(
-        "{} clean -r -q \"$@\" > \"$TMPDIR/nexonic-clear-last.txt\" 2>&1\nosascript -e 'display notification \"Verified .clean copies were saved next to the originals.\" with title \"Nexonic Clear\"'",
+        "{} clean -r -q \"$@\" > \"$TMPDIR/scruvix-last.txt\" 2>&1\nosascript -e 'display notification \"Verified .clean copies were saved next to the originals.\" with title \"Scruvix\"'",
         sh_quote(exe)
     ));
     let wflow = format!(
@@ -335,6 +379,7 @@ pub(crate) fn macos(exe: &Path, install: bool, dry: bool) -> Result<Vec<String>,
         dry,
         &mut log,
     )?;
+    remove_legacy_macos(&services, dry, &mut log);
     if !dry && cfg!(target_os = "macos") {
         let _ = std::process::Command::new("/System/Library/CoreServices/pbs")
             .arg("-update")
@@ -421,7 +466,7 @@ mod tests {
 
     #[test]
     fn windows_commands_cover_every_format_and_folders() {
-        let exe = Path::new(r"C:\Program Files\Nexonic Clear\nexonic-clear-cli.exe");
+        let exe = Path::new(r"C:\Program Files\Scruvix\scruvix-cli.exe");
         let add = windows_commands(exe, true);
         for e in clear_core::Format::EXTENSIONS {
             assert!(
@@ -444,13 +489,17 @@ mod tests {
 
     #[test]
     fn macos_quick_action_is_a_valid_plist_with_the_command() {
-        let tmp = std::env::temp_dir().join(format!("nexonic-mac-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("scruvix-mac-{}", std::process::id()));
         std::env::set_var("HOME", &tmp);
-        let exe = Path::new("/Applications/Nexonic Clear.app/Contents/MacOS/nexonic-clear-cli");
+        let exe = Path::new("/Applications/Scruvix.app/Contents/MacOS/scruvix-cli");
         macos(exe, true, false).unwrap();
-        let wf = tmp.join("Library/Services/Clean with Nexonic Clear.workflow/Contents");
+        let wf = tmp.join("Library/Services/Clean with Scruvix.workflow/Contents");
         let doc = std::fs::read_to_string(wf.join("document.wflow")).unwrap();
-        assert!(doc.contains("&apos;/Applications/Nexonic Clear.app") || doc.contains("'/Applications/Nexonic Clear.app/Contents/MacOS/nexonic-clear-cli' clean -r -q"));
+        assert!(
+            doc.contains("&apos;/Applications/Scruvix.app")
+                || doc
+                    .contains("'/Applications/Scruvix.app/Contents/MacOS/scruvix-cli' clean -r -q")
+        );
         assert!(std::fs::read_to_string(wf.join("Info.plist"))
             .unwrap()
             .contains("runWorkflowAsService"));
