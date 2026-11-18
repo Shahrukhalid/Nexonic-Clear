@@ -231,3 +231,60 @@ fn every_real_fixture_verifies_after_default_cleaning() {
         assert!(r.verified, "{name}: {:?}", r.problems);
     }
 }
+
+#[test]
+fn xmp_end_tag_inside_the_opening_tag_does_not_panic() {
+    let x = "<x:xmpmeta><dc:title a</dc:title>></x:xmpmeta><xmp:Label>kept</xmp:Label>";
+    let f = insert_after_soi(&bare_jpeg(), &[xmp(x)]);
+    let i = inspect(&f).unwrap();
+    assert!(i
+        .details
+        .iter()
+        .any(|f| f.name == "xmp:Label" && f.value == "kept"));
+    clean_and_verify(&f, &CleanOptions::default()).unwrap();
+}
+
+#[test]
+fn xmp_with_many_unclosed_elements_is_read_quickly() {
+    // About 13,000 opening tags with no end tags: once quadratic (several seconds).
+    let x = format!("<x:xmpmeta>{}</x:xmpmeta>", "<a:b>".repeat(13_000));
+    let f = insert_after_soi(&bare_jpeg(), &[xmp(&x)]);
+    let t = std::time::Instant::now();
+    inspect(&f).unwrap();
+    assert!(
+        t.elapsed() < std::time::Duration::from_secs(2),
+        "{:?}",
+        t.elapsed()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn cleaned_files_keep_the_original_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("clear-perm-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let src = dir.join("private.jpg");
+    std::fs::write(&src, fx("CA.jpg")).unwrap();
+    std::fs::set_permissions(&src, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let copy = dir.join("private.clean.jpg");
+    assert!(
+        clear_core::clean_path(&src, &copy, &CleanOptions::default())
+            .unwrap()
+            .verified
+    );
+    assert_eq!(
+        std::fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert!(
+        clear_core::clean_path(&src, &src, &CleanOptions::default())
+            .unwrap()
+            .verified
+    );
+    assert_eq!(
+        std::fs::metadata(&src).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}

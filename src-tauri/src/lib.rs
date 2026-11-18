@@ -373,6 +373,21 @@ async fn output(id: u64, outputs: State<'_, Outputs>) -> Result<Response, String
 /// flushed to disk, then renamed. The destination never holds partial data.
 /// When `time_from` is given, the file's modification time is copied from it.
 fn atomic_write(data: &[u8], dest: &Path, time_from: Option<&Path>) -> Result<(), String> {
+    atomic_write_with(dest, time_from, |f| f.write_all(data))
+}
+
+/// Copies a cleaned result to `dest` atomically, streaming it from disk, so a
+/// large video is never held in memory while it is saved.
+fn atomic_copy(src: &Path, dest: &Path, time_from: Option<&Path>) -> Result<(), String> {
+    let mut from = std::fs::File::open(src).map_err(|e| format!("io|Could not save: {e}"))?;
+    atomic_write_with(dest, time_from, |f| std::io::copy(&mut from, f).map(|_| ()))
+}
+
+fn atomic_write_with(
+    dest: &Path,
+    time_from: Option<&Path>,
+    fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<(), String> {
     let dir = dest.parent().ok_or("io|Invalid destination.")?;
     let name = dest
         .file_name()
@@ -384,7 +399,7 @@ fn atomic_write(data: &[u8], dest: &Path, time_from: Option<&Path>) -> Result<()
         .and_then(|m| m.modified().ok());
     let result = (|| -> std::io::Result<()> {
         let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(data)?;
+        fill(&mut f)?;
         f.sync_all()?;
         if let Some(t) = modified {
             f.set_modified(t)?;
@@ -396,11 +411,6 @@ fn atomic_write(data: &[u8], dest: &Path, time_from: Option<&Path>) -> Result<()
         let _ = std::fs::remove_file(&tmp);
     }
     result.map_err(|e| format!("io|Could not save: {e}"))
-}
-
-fn atomic_copy(src: &Path, dest: &Path, time_from: Option<&Path>) -> Result<(), String> {
-    let data = std::fs::read(src).map_err(|e| format!("io|Could not save: {e}"))?;
-    atomic_write(&data, dest, time_from)
 }
 
 #[derive(Serialize)]
@@ -632,6 +642,11 @@ pub fn run() {
             // Results from a previous session are never reused.
             if let Ok(dir) = output_dir(app.handle()) {
                 let _ = std::fs::remove_dir_all(&dir);
+            }
+            // Nor are the private copies of files shared into the app earlier
+            // (Android share sheet): originals with all their metadata.
+            if let Ok(cache) = app.path().app_cache_dir() {
+                let _ = std::fs::remove_dir_all(cache.join("shared-taken"));
             }
             #[cfg(desktop)]
             app.state::<Launch>()

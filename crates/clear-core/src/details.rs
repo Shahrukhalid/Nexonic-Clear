@@ -6,6 +6,10 @@ use crate::exif::Field;
 
 const MAX_FIELDS: usize = 400;
 const MAX_VALUE: usize = 300;
+/// How many element tags are looked at, and how far ahead an element's end tag
+/// is searched for: keeps reading a huge or hostile XMP packet fast.
+const MAX_TAGS: usize = 20_000;
+const MAX_ELEMENT: usize = 8 * 1024;
 
 fn field(group: &str, name: &str, value: &str) -> Field {
     Field {
@@ -68,8 +72,10 @@ pub fn xmp(data: &[u8]) -> Vec<Field> {
     }
     // Elements with text content (innermost only).
     let mut rest: &str = &text;
+    let mut tags = 0;
     while let Some(open) = rest.find('<') {
-        if out.len() >= MAX_FIELDS {
+        tags += 1;
+        if out.len() >= MAX_FIELDS || tags > MAX_TAGS {
             break;
         }
         rest = &rest[open + 1..];
@@ -79,10 +85,17 @@ pub fn xmp(data: &[u8]) -> Vec<Field> {
             continue;
         }
         let end_tag = format!("</{tag}>");
-        let Some(end) = rest.find(&end_tag) else {
+        // The element's content starts after its opening tag; its end tag is
+        // searched for only there (a "</…>" inside the opening tag is not it).
+        let body = &rest[close + 1..];
+        let mut window = body.len().min(MAX_ELEMENT);
+        while !body.is_char_boundary(window) {
+            window -= 1;
+        }
+        let Some(end) = body[..window].find(&end_tag) else {
             continue;
         };
-        let inner = &rest[close + 1..end];
+        let inner = &body[..end];
         let values: Vec<String> = if inner.contains("<rdf:li") {
             inner
                 .split("<rdf:li")
