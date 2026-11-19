@@ -20,4 +20,4 @@ Desktop package validation exercises the app with a signed C2PA image and verifi
 
 Windows and macOS signing depends on the configured certificates and notarization credentials. GitHub APKs are development-signed per build. If Android rejects an update due to a certificate mismatch, export files you need before uninstalling the previous app. The Android package ID is retained for the existing Play channel, which relies on its established app signing identity.
 
-See [upgrade instructions](https://github.com/Shahrukhalid/Scruvix#upgrading-from-nexonic-clear) for desktop, CLI and Linux package changes.
+See [upgrade instructions](https://github.com/nexonic-technologies/Scruvix#upgrading-from-nexonic-clear) for desktop, CLI and Linux package changes.
