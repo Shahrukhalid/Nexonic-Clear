@@ -57,24 +57,24 @@ On Android, share photos, audio, video or PDFs to Scruvix from any app.
 ## Download
 
 <p align="center">
-  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Windows-x64-Portable.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Windows-Download-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a>
-  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-AppleSilicon.zip"><img alt="Download for Mac with Apple Silicon" src="https://img.shields.io/badge/Mac_Apple_Silicon-Download-000000?style=for-the-badge&logo=apple&logoColor=white"></a>
-  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-Intel.zip"><img alt="Download for Intel Mac" src="https://img.shields.io/badge/Mac_Intel-Download-555555?style=for-the-badge&logo=apple&logoColor=white"></a>
-  <a href="https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Android-ARM64.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white"></a>
+  <a href="https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-Windows-x64-Portable.zip"><img alt="Download for Windows" src="https://img.shields.io/badge/Windows-Download-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <a href="https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-macOS-AppleSilicon.zip"><img alt="Download for Mac with Apple Silicon" src="https://img.shields.io/badge/Mac_Apple_Silicon-Download-000000?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-macOS-Intel.zip"><img alt="Download for Intel Mac" src="https://img.shields.io/badge/Mac_Intel-Download-555555?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-Android-ARM64.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white"></a>
 </p>
 
 | Platform | Direct download |
 | --- | --- |
-| Windows 10/11 (x64), portable | [Scruvix-Windows-x64-Portable.zip](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Windows-x64-Portable.zip) |
-| Mac with Apple Silicon (M1 and later) | [Scruvix-macOS-AppleSilicon.zip](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-AppleSilicon.zip) |
-| Mac with Intel | [Scruvix-macOS-Intel.zip](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-macOS-Intel.zip) |
-| Android (most phones, ARM64) | [Scruvix-Android-ARM64.apk](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Android-ARM64.apk) |
-| Android (older phones, ARM32) | [Scruvix-Android-ARM32.apk](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Android-ARM32.apk) |
-| Linux x64, AppImage | [Scruvix-Linux-x64.AppImage](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Linux-x64.AppImage) |
-| Linux x64, Debian and Ubuntu | [Scruvix-Linux-x64.deb](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-Linux-x64.deb) |
-| Command-line tool | [Windows](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-Windows-x64.zip), [Mac Apple Silicon](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-macOS-AppleSilicon.zip), [Mac Intel](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-macOS-Intel.zip), [Linux](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/Scruvix-CLI-Linux-x64.zip) |
+| Windows 10/11 (x64), portable | [Scruvix-Windows-x64-Portable.zip](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-Windows-x64-Portable.zip) |
+| Mac with Apple Silicon (M1 and later) | [Scruvix-macOS-AppleSilicon.zip](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-macOS-AppleSilicon.zip) |
+| Mac with Intel | [Scruvix-macOS-Intel.zip](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-macOS-Intel.zip) |
+| Android (most phones, ARM64) | [Scruvix-Android-ARM64.apk](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-Android-ARM64.apk) |
+| Android (older phones, ARM32) | [Scruvix-Android-ARM32.apk](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-Android-ARM32.apk) |
+| Linux x64, AppImage | [Scruvix-Linux-x64.AppImage](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-Linux-x64.AppImage) |
+| Linux x64, Debian and Ubuntu | [Scruvix-Linux-x64.deb](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-Linux-x64.deb) |
+| Command-line tool | [Windows](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-CLI-Windows-x64.zip), [Mac Apple Silicon](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-CLI-macOS-AppleSilicon.zip), [Mac Intel](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-CLI-macOS-Intel.zip), [Linux](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/Scruvix-CLI-Linux-x64.zip) |
 
-Extract the Windows and macOS ZIPs before running the app. On Linux, run the AppImage or install the Debian package. Verify downloads with [SHA256SUMS.txt](https://github.com/Shahrukhalid/Scruvix/releases/latest/download/SHA256SUMS.txt). All versions are on the [Releases](https://github.com/Shahrukhalid/Scruvix/releases) page.
+Extract the Windows and macOS ZIPs before running the app. On Linux, run the AppImage or install the Debian package. Verify downloads with [SHA256SUMS.txt](https://github.com/nexonic-technologies/Scruvix/releases/latest/download/SHA256SUMS.txt). All versions are on the [Releases](https://github.com/nexonic-technologies/Scruvix/releases) page.
 
 ## Upgrading from Nexonic Clear
 
@@ -82,7 +82,7 @@ Extract the Windows and macOS ZIPs before running the app. On Linux, run the App
 - **Linux:** Install the replacement package with `sudo apt install ./Scruvix-Linux-x64.deb`. The package replaces the former `nexonic-clear` Debian package. Re-select Scruvix in Open With if your desktop still points to the old launcher. Replace a previous AppImage with the new file.
 - **CLI:** Update scripts to call `scruvix-cli`. To retain a legacy invocation, point a local symlink or command wrapper at the new executable. Run `scruvix-cli integrate install` to update the right-click menus. On Linux and macOS, uninstall customized old menu entries from the older CLI before installing the Scruvix entries.
 - **Android:** The package ID remains `com.nexonic.clear`. GitHub APKs use a development key generated for each build. If Android rejects an update due to a signer mismatch, save any files you need outside the app before uninstalling the old build, then install the new one. For Google Play, install updates from Play with the established app signing identity.
-- [Version 0.4.1 downloads](https://github.com/Shahrukhalid/Scruvix/releases/tag/v0.4.1) are still available under their original filenames. Use the current Downloads table to replace bookmarks for the old versionless asset links.
+- [Version 0.4.1 downloads](https://github.com/nexonic-technologies/Scruvix/releases/tag/v0.4.1) are still available under their original filenames. Use the current Downloads table to replace bookmarks for the old versionless asset links.
 
 ## Honest limits
 

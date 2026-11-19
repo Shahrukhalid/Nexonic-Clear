@@ -21,7 +21,7 @@ readme = (
     "Portable: no installer and no setup. Works fully offline.\n"
     "{run}\n\n"
     "Third-party licenses are in the notices folder.\n"
-    "https://github.com/Shahrukhalid/Scruvix\n"
+    "https://github.com/nexonic-technologies/Scruvix\n"
 )
 config = json.loads((ROOT / "src-tauri/tauri.conf.json").read_text())
 version = config["version"]
